@@ -1,0 +1,17 @@
+services:
+  16688-mcp:
+    build: ..
+    image: 16688-mcp:latest
+    container_name: 16688-mcp
+    restart: unless-stopped
+    env_file: ../.env
+    ports:
+      - "127.0.0.1:3320:3000"   # loopback only; put a reverse proxy or tunnel in front
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 128m
+    cpus: 0.5
+    pids_limit: 64

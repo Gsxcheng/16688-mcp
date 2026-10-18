@@ -1,0 +1,1094 @@
+[
+ {
+  "no": 1,
+  "group": "商品",
+  "name": "商品列表",
+  "path": "/openApi/goods/list",
+  "note": "本地 + 已代理货源；可按 source 过滤；内存分页",
+  "params": [
+   {
+    "name": "page_no",
+    "required": false,
+    "type": "int",
+    "desc": "页码，默认 1"
+   },
+   {
+    "name": "page_size",
+    "required": false,
+    "type": "int",
+    "desc": "每页条数，默认 20，1–100"
+   },
+   {
+    "name": "keywords",
+    "required": false,
+    "type": "string",
+    "desc": "匹配商品编号 / 名称"
+   },
+   {
+    "name": "source",
+    "required": false,
+    "type": "string",
+    "desc": "local / supply；空则全部"
+   }
+  ]
+ },
+ {
+  "no": 2,
+  "group": "商品",
+  "name": "商品详情",
+  "path": "/openApi/goods/detail",
+  "note": "按 goods_no：优先本地，其次已代理货源",
+  "params": [
+   {
+    "name": "goods_no",
+    "required": true,
+    "type": "string",
+    "desc": "商品编号"
+   }
+  ]
+ },
+ {
+  "no": 3,
+  "group": "商品",
+  "name": "创建商品",
+  "path": "/openApi/goods/create",
+  "note": "goods_no 空=新建自营商品，有值=更新；铺货商品仅支持改加价/分类/排序；需完成商家认证；卡密库存请用「上传卡密」",
+  "params": [
+   {
+    "name": "goods_no",
+    "required": false,
+    "type": "string",
+    "desc": "空则新建；传入则更新对应商品"
+   },
+   {
+    "name": "name",
+    "required": true,
+    "type": "string",
+    "desc": "标题，最长 255；铺货商品不传"
+   },
+   {
+    "name": "image",
+    "required": true,
+    "type": "string",
+    "desc": "封面图 URL，最长 500；铺货商品不传"
+   },
+   {
+    "name": "description",
+    "required": false,
+    "type": "string",
+    "desc": "商品说明"
+   },
+   {
+    "name": "delivery_method",
+    "required": false,
+    "type": "int",
+    "desc": "1 卡密 / 2 内容 / 3 人工发货，默认 1"
+   },
+   {
+    "name": "delivery_order",
+    "required": false,
+    "type": "int",
+    "desc": "发卡顺序：0 先发旧卡 / 1 先发新卡 / 2 随机；仅卡密"
+   },
+   {
+    "name": "limit_quantity",
+    "required": false,
+    "type": "int",
+    "desc": "卡密起购数量，默认 1"
+   },
+   {
+    "name": "warning_stock_quantity",
+    "required": false,
+    "type": "int",
+    "desc": "库存预警数量；卡密默认 5"
+   },
+   {
+    "name": "instruction",
+    "required": false,
+    "type": "string",
+    "desc": "卡密使用说明"
+   },
+   {
+    "name": "content",
+    "required": false,
+    "type": "string",
+    "desc": "内容发货内容（富文本）；delivery_method=2 时必填"
+   },
+   {
+    "name": "manual_instruction",
+    "required": false,
+    "type": "string",
+    "desc": "人工发货说明（富文本）；delivery_method=3 时必填，买家付款后可见"
+   },
+   {
+    "name": "price",
+    "required": true,
+    "type": "float",
+    "desc": "售价，不能低于 0.02"
+   },
+   {
+    "name": "cost_price",
+    "required": false,
+    "type": "float",
+    "desc": "成本价"
+   },
+   {
+    "name": "agent_status",
+    "required": false,
+    "type": "int",
+    "desc": "0 不代理 / 1 开放代理，默认 0"
+   },
+   {
+    "name": "agent_price",
+    "required": false,
+    "type": "float",
+    "desc": "代理价；agent_status=1 时必填且大于 0"
+   },
+   {
+    "name": "source_category_id",
+    "required": false,
+    "type": "int",
+    "desc": "平台货源分类 ID；agent_status=1 时必填"
+   },
+   {
+    "name": "goods_category_no",
+    "required": false,
+    "type": "string",
+    "desc": "店内分类编号"
+   },
+   {
+    "name": "sort",
+    "required": false,
+    "type": "int",
+    "desc": "排序，默认 0"
+   },
+   {
+    "name": "markup_rate",
+    "required": false,
+    "type": "float",
+    "desc": "铺货商品加价百分比，markup_type=0 时生效，0～999.9"
+   },
+   {
+    "name": "markup_type",
+    "required": false,
+    "type": "int",
+    "desc": "铺货加价方式：0百分比 1固定金额，默认 0"
+   },
+   {
+    "name": "markup_money",
+    "required": false,
+    "type": "float",
+    "desc": "铺货固定加价金额，markup_type=1 时必填且大于 0"
+   }
+  ]
+ },
+ {
+  "no": 4,
+  "group": "商品",
+  "name": "更新商品状态",
+  "path": "/openApi/goods/changeStatus",
+  "note": "1 上架 / 0 下架；上架需完成商家认证，且审核通过；铺货商品依赖上游货源在售",
+  "params": [
+   {
+    "name": "goods_no",
+    "required": true,
+    "type": "string",
+    "desc": "商品编号"
+   },
+   {
+    "name": "status",
+    "required": true,
+    "type": "int",
+    "desc": "1 上架 / 0 下架"
+   }
+  ]
+ },
+ {
+  "no": 5,
+  "group": "商品",
+  "name": "删除商品",
+  "path": "/openApi/goods/delete",
+  "note": "按 goods_no 软删除当前商户商品",
+  "params": [
+   {
+    "name": "goods_no",
+    "required": true,
+    "type": "string",
+    "desc": "商品编号"
+   }
+  ]
+ },
+ {
+  "no": 6,
+  "group": "商品",
+  "name": "生成文字封面",
+  "path": "/openApi/goods/cover",
+  "note": "按文字生成 1080×1080 封面并上传存储；最多 80 字；前两个字符高亮",
+  "params": [
+   {
+    "name": "text",
+    "required": true,
+    "type": "string",
+    "desc": "封面文字，最长 80"
+   }
+  ]
+ },
+ {
+  "no": 7,
+  "group": "商品分类",
+  "name": "商品分类查询",
+  "path": "/openApi/goodsCategory/list",
+  "note": "当前商户店内分类；可按关键词、状态筛选",
+  "params": [
+   {
+    "name": "page_no",
+    "required": false,
+    "type": "int",
+    "desc": "页码，默认 1"
+   },
+   {
+    "name": "page_size",
+    "required": false,
+    "type": "int",
+    "desc": "每页条数，默认 20，1–100"
+   },
+   {
+    "name": "keywords",
+    "required": false,
+    "type": "string",
+    "desc": "匹配分类编号 / 名称"
+   },
+   {
+    "name": "status",
+    "required": false,
+    "type": "int",
+    "desc": "1 启用 / 0 停用；空则全部"
+   }
+  ]
+ },
+ {
+  "no": 8,
+  "group": "商品分类",
+  "name": "商品分类创建",
+  "path": "/openApi/goodsCategory/create",
+  "note": "创建店内分类；编号由平台生成，默认启用",
+  "params": [
+   {
+    "name": "name",
+    "required": true,
+    "type": "string",
+    "desc": "分类名称，最长 100"
+   },
+   {
+    "name": "image",
+    "required": false,
+    "type": "string",
+    "desc": "封面图 URL，最长 500"
+   },
+   {
+    "name": "sort",
+    "required": false,
+    "type": "int",
+    "desc": "排序，默认 0"
+   }
+  ]
+ },
+ {
+  "no": 9,
+  "group": "商品分类",
+  "name": "商品分类状态更新",
+  "path": "/openApi/goodsCategory/changeStatus",
+  "note": "1 启用 / 0 停用",
+  "params": [
+   {
+    "name": "goods_category_no",
+    "required": true,
+    "type": "string",
+    "desc": "分类编号"
+   },
+   {
+    "name": "status",
+    "required": true,
+    "type": "int",
+    "desc": "1 启用 / 0 停用"
+   }
+  ]
+ },
+ {
+  "no": 10,
+  "group": "平台货源分类",
+  "name": "平台货源分类树",
+  "path": "/openApi/sourceCategory/tree",
+  "note": "仅启用分类；创建商品且 agent_status=1 时，source_category_id 取本树节点 id",
+  "params": []
+ },
+ {
+  "no": 11,
+  "group": "卡密库存",
+  "name": "上传卡密",
+  "path": "/openApi/stockSecretBatch/add",
+  "note": "仅自营卡密商品；单次最多 5 万张；默认按行拆分、去重",
+  "params": [
+   {
+    "name": "goods_no",
+    "required": true,
+    "type": "string",
+    "desc": "商品编号"
+   },
+   {
+    "name": "content",
+    "required": true,
+    "type": "string",
+    "desc": "卡密文本；split_type=1 一行一张，=2 空行分块，=3 全部内容为一张"
+   },
+   {
+    "name": "first",
+    "required": false,
+    "type": "int",
+    "desc": "1 优先卖出本次卡密，默认 0"
+   },
+   {
+    "name": "remove_repeat",
+    "required": false,
+    "type": "int",
+    "desc": "1 去除重复（含库存已有），默认 1"
+   },
+   {
+    "name": "split_type",
+    "required": false,
+    "type": "int",
+    "desc": "1 单行卡密 / 2 多行卡密 / 3 整段一张，默认 1"
+   },
+   {
+    "name": "expire_time",
+    "required": false,
+    "type": "int",
+    "desc": "过期 Unix 秒；0 永不过期"
+   }
+  ]
+ },
+ {
+  "no": 12,
+  "group": "卡密库存",
+  "name": "卡密查询",
+  "path": "/openApi/stockSecret/list",
+  "note": "仅自营卡密商品；筛选 status：0 未售 / 1 已售 / 3 已作废 / 4 已过期，空则全部；返回 status：0 未售 / 1 锁定 / 2 已售 / 3 作废",
+  "params": [
+   {
+    "name": "goods_no",
+    "required": true,
+    "type": "string",
+    "desc": "商品编号"
+   },
+   {
+    "name": "page_no",
+    "required": false,
+    "type": "int",
+    "desc": "页码，默认 1"
+   },
+   {
+    "name": "page_size",
+    "required": false,
+    "type": "int",
+    "desc": "每页条数，默认 20，1–100"
+   },
+   {
+    "name": "keywords",
+    "required": false,
+    "type": "string",
+    "desc": "匹配卡密内容 / 批次号"
+   },
+   {
+    "name": "status",
+    "required": false,
+    "type": "int",
+    "desc": "0 未售 / 1 已售 / 3 已作废 / 4 已过期；空则全部"
+   },
+   {
+    "name": "first",
+    "required": false,
+    "type": "int",
+    "desc": "1 优先销售 / 0 非优先；空则全部"
+   }
+  ]
+ },
+ {
+  "no": 13,
+  "group": "卡密库存",
+  "name": "批次查询",
+  "path": "/openApi/stockSecretBatch/list",
+  "note": "当前商户卡密导入批次；goods_no 空则全部",
+  "params": [
+   {
+    "name": "goods_no",
+    "required": false,
+    "type": "string",
+    "desc": "商品编号；空则全部"
+   },
+   {
+    "name": "page_no",
+    "required": false,
+    "type": "int",
+    "desc": "页码，默认 1"
+   },
+   {
+    "name": "page_size",
+    "required": false,
+    "type": "int",
+    "desc": "每页条数，默认 20，1–100"
+   },
+   {
+    "name": "keywords",
+    "required": false,
+    "type": "string",
+    "desc": "匹配批次号"
+   },
+   {
+    "name": "status",
+    "required": false,
+    "type": "int",
+    "desc": "1 有库存 / 2 已售罄；空则全部"
+   }
+  ]
+ },
+ {
+  "no": 14,
+  "group": "卡密库存",
+  "name": "作废卡密",
+  "path": "/openApi/stockSecret/invalidate",
+  "note": "按卡密查询返回的 id 作废；仅未售 / 锁定可作废",
+  "params": [
+   {
+    "name": "goods_no",
+    "required": true,
+    "type": "string",
+    "desc": "商品编号"
+   },
+   {
+    "name": "ids",
+    "required": true,
+    "type": "array",
+    "desc": "卡密 id 数组；去重后单次最多 200 个正整数"
+   },
+   {
+    "name": "invalid_reason",
+    "required": false,
+    "type": "string",
+    "desc": "作废原因，最长 255"
+   }
+  ]
+ },
+ {
+  "no": 15,
+  "group": "卡密库存",
+  "name": "取消作废",
+  "path": "/openApi/stockSecret/cancelInvalidate",
+  "note": "仅已作废卡密可恢复为未售",
+  "params": [
+   {
+    "name": "goods_no",
+    "required": true,
+    "type": "string",
+    "desc": "商品编号"
+   },
+   {
+    "name": "ids",
+    "required": true,
+    "type": "array",
+    "desc": "卡密 id 数组；去重后单次最多 200 个正整数"
+   }
+  ]
+ },
+ {
+  "no": 16,
+  "group": "卡密库存",
+  "name": "设置优先",
+  "path": "/openApi/stockSecret/setFirst",
+  "note": "仅未售卡密；first=1 优先卖出，=0 取消优先",
+  "params": [
+   {
+    "name": "goods_no",
+    "required": true,
+    "type": "string",
+    "desc": "商品编号"
+   },
+   {
+    "name": "ids",
+    "required": true,
+    "type": "array",
+    "desc": "卡密 id 数组；去重后单次最多 200 个正整数"
+   },
+   {
+    "name": "first",
+    "required": true,
+    "type": "int",
+    "desc": "1 优先 / 0 取消优先"
+   }
+  ]
+ },
+ {
+  "no": 17,
+  "group": "卡密库存",
+  "name": "设置过期",
+  "path": "/openApi/stockSecret/setExpire",
+  "note": "仅未售卡密；expire_time=0 永不过期",
+  "params": [
+   {
+    "name": "goods_no",
+    "required": true,
+    "type": "string",
+    "desc": "商品编号"
+   },
+   {
+    "name": "ids",
+    "required": true,
+    "type": "array",
+    "desc": "卡密 id 数组；去重后单次最多 200 个正整数"
+   },
+   {
+    "name": "expire_time",
+    "required": true,
+    "type": "int",
+    "desc": "过期 Unix 秒；0 永不过期"
+   }
+  ]
+ },
+ {
+  "no": 18,
+  "group": "卡密库存",
+  "name": "全部作废",
+  "path": "/openApi/stockSecret/invalidateAll",
+  "note": "作废该商品全部未售 / 锁定卡密；已售不受影响",
+  "params": [
+   {
+    "name": "goods_no",
+    "required": true,
+    "type": "string",
+    "desc": "商品编号"
+   },
+   {
+    "name": "invalid_reason",
+    "required": false,
+    "type": "string",
+    "desc": "作废原因，最长 255；空则 api_invalidate_all"
+   }
+  ]
+ },
+ {
+  "no": 19,
+  "group": "采购",
+  "name": "询价",
+  "path": "/openApi/purchase/quotePrice",
+  "note": "仅已代理货源商品；服务费由采购方承担，扣运营钱包；内容商品 quantity 强制 1",
+  "params": [
+   {
+    "name": "goods_no",
+    "required": true,
+    "type": "string",
+    "desc": "货源商品编号"
+   },
+   {
+    "name": "quantity",
+    "required": false,
+    "type": "int",
+    "desc": "默认 1；内容商品强制 1；人工发货可多件且库存不限；卡密不得低于 limit_quantity"
+   }
+  ]
+ },
+ {
+  "no": 20,
+  "group": "采购",
+  "name": "下单",
+  "path": "/openApi/purchase/create",
+  "note": "仅货源；扣运营钱包；已发货时返回卡密/内容/发货说明",
+  "params": [
+   {
+    "name": "goods_no",
+    "required": true,
+    "type": "string",
+    "desc": "货源商品编号"
+   },
+   {
+    "name": "quantity",
+    "required": false,
+    "type": "int",
+    "desc": "默认 1；内容商品强制 1；人工发货可多件且库存不限"
+   },
+   {
+    "name": "remark",
+    "required": false,
+    "type": "string",
+    "desc": "备注，最长 500 字"
+   }
+  ]
+ },
+ {
+  "no": 21,
+  "group": "采购",
+  "name": "采购记录",
+  "path": "/openApi/purchase/list",
+  "note": "当前商户作为买家的货源采购单",
+  "params": [
+   {
+    "name": "page_no",
+    "required": false,
+    "type": "int",
+    "desc": "页码，默认 1"
+   },
+   {
+    "name": "page_size",
+    "required": false,
+    "type": "int",
+    "desc": "每页条数，默认 20，1–100"
+   },
+   {
+    "name": "status",
+    "required": false,
+    "type": "int",
+    "desc": "订单状态；空则全部"
+   },
+   {
+    "name": "keywords",
+    "required": false,
+    "type": "string",
+    "desc": "匹配采购单号 / 商品编号 / 商品名称"
+   }
+  ]
+ },
+ {
+  "no": 22,
+  "group": "采购",
+  "name": "查单",
+  "path": "/openApi/purchase/query",
+  "note": "按采购单号；已发货返回卡密/内容/发货说明；无投诉时 complaint_status 为 -1",
+  "params": [
+   {
+    "name": "trade_no",
+    "required": true,
+    "type": "string",
+    "desc": "采购单号"
+   }
+  ]
+ },
+ {
+  "no": 23,
+  "group": "采购",
+  "name": "发起投诉",
+  "path": "/openApi/purchase/applyComplaint",
+  "note": "订单状态须为待发货/已发货/已完成；images 至少 1 张、最多 6 张（可用上传图片接口）",
+  "params": [
+   {
+    "name": "trade_no",
+    "required": true,
+    "type": "string",
+    "desc": "采购单号"
+   },
+   {
+    "name": "reason",
+    "required": true,
+    "type": "string",
+    "desc": "投诉原因，最长 255 字"
+   },
+   {
+    "name": "description",
+    "required": false,
+    "type": "string",
+    "desc": "补充说明，最长 2000 字"
+   },
+   {
+    "name": "images",
+    "required": true,
+    "type": "array",
+    "desc": "凭证图片 URL 数组，1–6 张"
+   }
+  ]
+ },
+ {
+  "no": 24,
+  "group": "采购",
+  "name": "投诉详情",
+  "path": "/openApi/purchase/complaintDetail",
+  "note": "",
+  "params": [
+   {
+    "name": "complaint_no",
+    "required": true,
+    "type": "string",
+    "desc": "投诉单号"
+   }
+  ]
+ },
+ {
+  "no": 25,
+  "group": "采购",
+  "name": "投诉留言列表",
+  "path": "/openApi/purchase/complaintMessageList",
+  "note": "",
+  "params": [
+   {
+    "name": "complaint_no",
+    "required": true,
+    "type": "string",
+    "desc": "投诉单号"
+   }
+  ]
+ },
+ {
+  "no": 26,
+  "group": "采购",
+  "name": "投诉留言",
+  "path": "/openApi/purchase/complaintSendMessage",
+  "note": "content 与 images 至少填一项；已结案不可发",
+  "params": [
+   {
+    "name": "complaint_no",
+    "required": true,
+    "type": "string",
+    "desc": "投诉单号"
+   },
+   {
+    "name": "content",
+    "required": false,
+    "type": "string",
+    "desc": "留言正文"
+   },
+   {
+    "name": "images",
+    "required": false,
+    "type": "array",
+    "desc": "图片 URL，最多 6 张"
+   }
+  ]
+ },
+ {
+  "no": 27,
+  "group": "采购",
+  "name": "撤销投诉",
+  "path": "/openApi/purchase/complaintCancel",
+  "note": "仅待商家处理（status=0）可撤",
+  "params": [
+   {
+    "name": "complaint_no",
+    "required": true,
+    "type": "string",
+    "desc": "投诉单号"
+   }
+  ]
+ },
+ {
+  "no": 28,
+  "group": "采购",
+  "name": "申请平台介入",
+  "path": "/openApi/purchase/complaintApplyPlatform",
+  "note": "",
+  "params": [
+   {
+    "name": "complaint_no",
+    "required": true,
+    "type": "string",
+    "desc": "投诉单号"
+   }
+  ]
+ },
+ {
+  "no": 29,
+  "group": "订单管理",
+  "name": "订单列表",
+  "path": "/openApi/order/list",
+  "note": "当前商户作为卖家的店铺订单（含铺货）；默认近 6 个月；status：0待支付 / 1待发货 / 2已关闭 / 3已退款 / 4已发货 / 5已完成",
+  "params": [
+   {
+    "name": "page_no",
+    "required": false,
+    "type": "int",
+    "desc": "页码，默认 1"
+   },
+   {
+    "name": "page_size",
+    "required": false,
+    "type": "int",
+    "desc": "每页条数，默认 20，1–100"
+   },
+   {
+    "name": "status",
+    "required": false,
+    "type": "int",
+    "desc": "订单状态；空则全部"
+   },
+   {
+    "name": "platform",
+    "required": false,
+    "type": "string",
+    "desc": "shop / api / purchase；空则全部"
+   },
+   {
+    "name": "keywords",
+    "required": false,
+    "type": "string",
+    "desc": "匹配订单号 / 流水号 / 邮箱 / 商品编号 / 商品名称"
+   },
+   {
+    "name": "card_no",
+    "required": false,
+    "type": "string",
+    "desc": "按已售卡密反查订单"
+   },
+   {
+    "name": "start_time",
+    "required": false,
+    "type": "int",
+    "desc": "创建时间起，Unix 秒"
+   },
+   {
+    "name": "end_time",
+    "required": false,
+    "type": "int",
+    "desc": "创建时间止，Unix 秒"
+   }
+  ]
+ },
+ {
+  "no": 30,
+  "group": "订单管理",
+  "name": "订单详情",
+  "path": "/openApi/order/info",
+  "note": "卖家视角；代理订单不返回卡密/内容；identity=agent 时 cards/content 为空；人工发货已发货后返回 manual_instruction",
+  "params": [
+   {
+    "name": "trade_no",
+    "required": true,
+    "type": "string",
+    "desc": "平台订单号"
+   }
+  ]
+ },
+ {
+  "no": 31,
+  "group": "订单管理",
+  "name": "手动发货",
+  "path": "/openApi/order/deliver",
+  "note": "待发货 → 已发货；仅自营/货源可发，代理请等待货源商发货",
+  "params": [
+   {
+    "name": "trade_no",
+    "required": true,
+    "type": "string",
+    "desc": "平台订单号"
+   }
+  ]
+ },
+ {
+  "no": 32,
+  "group": "订单管理",
+  "name": "退款",
+  "path": "/openApi/order/refund",
+  "note": "仅货主（自营/货源）可退；需商户分组开启自助退款；有进行中投诉不可退",
+  "params": [
+   {
+    "name": "trade_no",
+    "required": true,
+    "type": "string",
+    "desc": "平台订单号"
+   }
+  ]
+ },
+ {
+  "no": 33,
+  "group": "订单管理",
+  "name": "订单统计",
+  "path": "/openApi/order/statistics",
+  "note": "卖家视角，近 6 个月；按状态计数",
+  "params": []
+ },
+ {
+  "no": 34,
+  "group": "订单管理",
+  "name": "订单买家拉黑",
+  "path": "/openApi/channelBuyerBlack/addFromOrder",
+  "note": "仅本店订单；按订单多维拉黑：IP / juuid / 邮箱 / visitor_key / 支付宝身份 / 微信身份；有值的维度都会写入同一组",
+  "params": [
+   {
+    "name": "trade_no",
+    "required": true,
+    "type": "string",
+    "desc": "平台订单号"
+   }
+  ]
+ },
+ {
+  "no": 35,
+  "group": "订单管理",
+  "name": "订单买家解黑",
+  "path": "/openApi/channelBuyerBlack/delete",
+  "note": "仅本店订单；按 trade_no 解除本店该买家各维度拉黑；平台名单不受影响",
+  "params": [
+   {
+    "name": "trade_no",
+    "required": true,
+    "type": "string",
+    "desc": "平台订单号"
+   }
+  ]
+ },
+ {
+  "no": 36,
+  "group": "订单投诉",
+  "name": "投诉列表",
+  "path": "/openApi/complaint/list",
+  "note": "卖家视角（自营/货源/代理）；status：0待商家处理 / 1平台介入 / 2已结案 / 3已撤销；空则全部",
+  "params": [
+   {
+    "name": "page_no",
+    "required": false,
+    "type": "int",
+    "desc": "页码，默认 1"
+   },
+   {
+    "name": "page_size",
+    "required": false,
+    "type": "int",
+    "desc": "每页条数，默认 20，1–100"
+   },
+   {
+    "name": "status",
+    "required": false,
+    "type": "int",
+    "desc": "投诉状态；空则全部"
+   },
+   {
+    "name": "keywords",
+    "required": false,
+    "type": "string",
+    "desc": "匹配投诉单号 / 订单号 / 邮箱"
+   }
+  ]
+ },
+ {
+  "no": 37,
+  "group": "订单投诉",
+  "name": "投诉详情",
+  "path": "/openApi/complaint/detail",
+  "note": "代理不返回卡密；identity：merchant 自营 / parent 货源 / agent 代理",
+  "params": [
+   {
+    "name": "complaint_no",
+    "required": true,
+    "type": "string",
+    "desc": "投诉单号"
+   }
+  ]
+ },
+ {
+  "no": 38,
+  "group": "订单投诉",
+  "name": "投诉留言列表",
+  "path": "/openApi/complaint/messageList",
+  "note": "",
+  "params": [
+   {
+    "name": "complaint_no",
+    "required": true,
+    "type": "string",
+    "desc": "投诉单号"
+   }
+  ]
+ },
+ {
+  "no": 39,
+  "group": "订单投诉",
+  "name": "投诉留言",
+  "path": "/openApi/complaint/sendMessage",
+  "note": "自营以 merchant 发言，货源以 parent 发言；content 与 images 至少填一项",
+  "params": [
+   {
+    "name": "complaint_no",
+    "required": true,
+    "type": "string",
+    "desc": "投诉单号"
+   },
+   {
+    "name": "content",
+    "required": false,
+    "type": "string",
+    "desc": "留言正文"
+   },
+   {
+    "name": "images",
+    "required": false,
+    "type": "array",
+    "desc": "图片 URL，最多 6 张"
+   }
+  ]
+ },
+ {
+  "no": 40,
+  "group": "订单投诉",
+  "name": "同意退款",
+  "path": "/openApi/complaint/refund",
+  "note": "仅自营/货源；代理请等待货源商处理；结案为买家胜诉",
+  "params": [
+   {
+    "name": "complaint_no",
+    "required": true,
+    "type": "string",
+    "desc": "投诉单号"
+   },
+   {
+    "name": "remark",
+    "required": false,
+    "type": "string",
+    "desc": "备注，最长 500 字"
+   }
+  ]
+ },
+ {
+  "no": 41,
+  "group": "订单投诉",
+  "name": "标记完成",
+  "path": "/openApi/complaint/markDone",
+  "note": "仅自营/货源；投诉仍待处理，等待买家申请平台介入",
+  "params": [
+   {
+    "name": "complaint_no",
+    "required": true,
+    "type": "string",
+    "desc": "投诉单号"
+   },
+   {
+    "name": "reason",
+    "required": true,
+    "type": "string",
+    "desc": "完成说明，最长 500 字"
+   },
+   {
+    "name": "images",
+    "required": false,
+    "type": "array",
+    "desc": "凭证图片 URL，最多 6 张"
+   }
+  ]
+ },
+ {
+  "no": 42,
+  "group": "账户",
+  "name": "钱包余额",
+  "path": "/openApi/merchant/balance",
+  "note": "三类钱包；货源采购扣运营钱包",
+  "params": []
+ },
+ {
+  "no": 43,
+  "group": "通用功能",
+  "name": "上传图片",
+  "path": "/openApi/upload/image",
+  "note": "image 为图片 base64 或 data URL；单张不超过 5MB；宽或高不超过 8000 像素；仅 JPG / PNG / GIF / WebP；返回 URL 可用于创建商品 image",
+  "params": [
+   {
+    "name": "image",
+    "required": true,
+    "type": "string",
+    "desc": "图片 base64，或 data:image/png;base64,..."
+   }
+  ]
+ }
+]
