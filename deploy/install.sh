@@ -32,12 +32,15 @@ grep -q '^MCP_BEARER_TOKEN=.\{32,\}' .env || echo "MCP_BEARER_TOKEN=$(openssl ra
 grep -q '^MCP_ALLOWED_HOSTS=' .env || echo "MCP_ALLOWED_HOSTS=$PUBLIC_HOST" >> .env
 
 echo "== 3/5 16688 接入凭证（已存在则跳过；输入时不显示）"
+sed -i '/^OPEN16688_APP_ID=\s*$/d;/^OPEN16688_SECRET=\s*$/d' .env   # 上次留下的空值
 if ! grep -q '^OPEN16688_APP_ID=.' .env; then
-  read -rp "app_id: " APP_ID
+  APP_ID=
+  while [ -z "$APP_ID" ]; do read -rp "app_id（不能为空）: " APP_ID; APP_ID=$(printf '%s' "$APP_ID" | tr -d '[:space:]'); done
   echo "OPEN16688_APP_ID=$APP_ID" >> .env
 fi
 if ! grep -q '^OPEN16688_SECRET=.' .env; then
-  read -rsp "secret（开放平台点「显示密钥」后复制）: " SECRET; echo
+  SECRET=
+  while [ -z "$SECRET" ]; do read -rsp "secret（开放平台点「显示密钥」后复制，不能为空）: " SECRET; echo; SECRET=$(printf '%s' "$SECRET" | tr -d '[:space:]'); done
   echo "OPEN16688_SECRET=$SECRET" >> .env
 fi
 chmod 600 .env
