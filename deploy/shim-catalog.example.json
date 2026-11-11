@@ -1,0 +1,23 @@
+[
+  {
+    "id": 1, "sku_id": 101, "slug": "gemini-pro-6m", "category_id": 1,
+    "title": "Gemini Pro 6个月 激活卡密",
+    "description": "自助兑换卡密。上游无质保，激活成功后不退款；兑换需在第三方兑换站提交账号信息，新号易触发风控，建议使用老号；账号不能已有会员。",
+    "cost": 8.22,
+    "sources": [{"type": "16688", "goods_no": "G81445970", "max_unit_cost": 9.0}]
+  },
+  {
+    "id": 2, "sku_id": 102, "slug": "gemini-pro-12m", "category_id": 1,
+    "title": "Gemini Pro 12个月 激活卡密",
+    "description": "自助兑换卡密。上游无质保，激活成功后不退款；兑换需在第三方兑换站提交账号信息，新号易触发风控，建议使用老号；账号不能已有会员。",
+    "cost": 12.34,
+    "sources": [{"type": "16688", "goods_no": "G89750228", "max_unit_cost": 13.5}]
+  },
+  {
+    "id": 3, "sku_id": 103, "slug": "gemini-pro-24m", "category_id": 1,
+    "title": "Gemini Pro 24个月 激活卡密",
+    "description": "自助兑换卡密。上游无质保，激活成功后不退款；兑换需在第三方兑换站提交账号信息，新号易触发风控，建议使用老号；账号不能已有会员。",
+    "cost": 17.48,
+    "sources": [{"type": "16688", "goods_no": "G63803286", "max_unit_cost": 19.0}]
+  }
+]
