@@ -42,3 +42,21 @@ pytest -q          # 签名对拍需要本机有 php
 ## 许可
 
 MIT
+
+
+## dujiao-shim: 16688 as a Dujiao-Next upstream
+
+`src/dujiao_shim` is a small service that speaks the Dujiao-Next *upstream* protocol (`/api/v1/upstream/*`,
+HMAC headers `Dujiao-Next-Api-Key/Timestamp/Signature`) so a Dujiao-Next shop can map products to it and buy
+automatically after a customer pays. Behind it:
+
+- **16688 source** – quote -> guard rails (max unit cost, wallet floor, daily cap) -> `purchase/create` -> poll
+  `purchase/query` until shipped. Orders are written to SQLite *before* the purchase call; a timeout or crash
+  during `purchase/create` parks the order as `needs_review` and is never retried automatically.
+- **manual source** – for suppliers without an API (e.g. Telegram sellers): the order waits in a queue, a Feishu
+  notification is sent, and `/admin` (token protected) lets the operator paste the delivery content.
+- `SHIM_LIVE_PURCHASE` must be `1` for real purchases; otherwise the quote is real but a fake card is delivered.
+
+Run: `dujiao-shim` (env: `SHIM_API_KEY`, `SHIM_API_SECRET`, `SHIM_ADMIN_TOKEN`, `SHIM_CATALOG`, `SHIM_DB`,
+`OPEN16688_APP_ID/SECRET`, optional `SHIM_CALLBACK_URL`, `SHIM_FEISHU_WEBHOOK`, `SHIM_MIN_BALANCE`,
+`SHIM_MAX_ORDERS_PER_DAY`). Catalog format: `deploy/shim-catalog.example.json`. Server install: `deploy/install-shim.sh`.
