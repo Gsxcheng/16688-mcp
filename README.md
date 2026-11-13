@@ -57,6 +57,13 @@ automatically after a customer pays. Behind it:
   notification is sent, and `/admin` (token protected) lets the operator paste the delivery content.
 - `SHIM_LIVE_PURCHASE` must be `1` for real purchases; otherwise the quote is real but a fake card is delivered.
 
+Each product has a **source pool**: every enabled 16688 source is quoted, the cheapest one that has stock and is
+under the ceiling is bought (`rule: "order"` keeps list order), and the comparison is stored with the order.
+`mode: "redeem"` products do not buy when sold: they hand out our own codes (`GG-…`), and the purchase happens when
+the buyer redeems one on the public redeem page. `/ops` is the owner console (pools, 16688 channel, exceptions,
+purchase log, codes, proposals). The redeem page is served by a second listener (`PUBLIC_PORT`, default 3001) that
+exposes nothing else.
+
 Run: `dujiao-shim` (env: `SHIM_API_KEY`, `SHIM_API_SECRET`, `SHIM_ADMIN_TOKEN`, `SHIM_CATALOG`, `SHIM_DB`,
 `OPEN16688_APP_ID/SECRET`, optional `SHIM_CALLBACK_URL`, `SHIM_FEISHU_WEBHOOK`, `SHIM_MIN_BALANCE`,
 `SHIM_MAX_ORDERS_PER_DAY`). Catalog format: `deploy/shim-catalog.example.json`. Server install: `deploy/install-shim.sh`.

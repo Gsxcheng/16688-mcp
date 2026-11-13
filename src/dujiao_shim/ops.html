@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>采购决策</title>
+<style>
+:root{--bg:#f3f5f4;--surface:#fff;--sunk:#e9edeb;--line:#d5dbd8;--fg:#17231f;--muted:#5b6964;--accent:#0c6f5e;--on:#fff;
+--accent-soft:#dcefe9;--ok:#1f7a3d;--ok-soft:#dff1e3;--warn:#9a5b00;--warn-soft:#fbeed3;--bad:#b3261e;--bad-soft:#fbe1de}
+@media (prefers-color-scheme:dark){:root{--bg:#111816;--surface:#1a2320;--sunk:#232e2a;--line:#34413c;--fg:#e6edea;
+--muted:#9aa9a3;--accent:#4fc3a9;--on:#06211b;--accent-soft:#1d3a33;--ok:#6fd08a;--ok-soft:#1c3324;--warn:#f0b955;
+--warn-soft:#3a2e15;--bad:#ff8a80;--bad-soft:#40201d;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 "PingFang SC","Microsoft YaHei",system-ui,sans-serif}
+.wrap{max-width:1080px;margin:0 auto;padding:16px;display:grid;grid-template-columns:190px minmax(0,1fr);gap:16px;align-items:start}
+h1{font-size:17px;margin:0}h2{font-size:16px;margin:0}h3{font-size:14px;margin:0}p{margin:0}
+.muted{color:var(--muted)}.small{font-size:13px}.num{font-variant-numeric:tabular-nums}
+.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
+.side{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:4px}
+.mi{display:flex;justify-content:space-between;align-items:center;gap:6px;text-align:left;border:0;background:transparent;
+padding:7px 8px;border-radius:8px;font:inherit;font-size:14px;color:var(--fg);cursor:pointer}
+.mi.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.badge{background:var(--accent);color:var(--on);border-radius:999px;font-size:12px;padding:0 7px;font-weight:600}
+.badge.bad{background:var(--bad);color:var(--surface)}
+.main{min-width:0;display:flex;flex-direction:column;gap:16px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.stats div{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;min-width:0}
+.stats small{display:block;color:var(--muted);font-size:12px}.stats strong{font-size:19px}
+button,select,input,textarea{font:inherit}
+button{cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:7px 13px}
+button.p{background:var(--accent);color:var(--on);border-color:var(--accent);font-weight:600}
+button:disabled{opacity:.5}
+input,select,textarea{padding:7px 9px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);min-width:0;max-width:100%}
+textarea{width:100%;min-height:70px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.pill{display:inline-block;border-radius:999px;padding:1px 9px;font-size:12px;font-weight:600;white-space:nowrap}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.bad{background:var(--bad-soft);color:var(--bad)}.pill.info{background:var(--accent-soft);color:var(--accent)}
+.pill.off{background:var(--sunk);color:var(--muted)}
+.head{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.tw{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:13px;min-width:560px}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:12px}.r{text-align:right}
+.form{display:grid;grid-template-columns:minmax(120px,190px) minmax(0,1fr);gap:8px 12px;align-items:center}
+.form label{color:var(--muted);font-size:13px}.form input,.form select{width:100%}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px}
+.kv div{background:var(--sunk);border-radius:8px;padding:8px 10px}.kv small{display:block;color:var(--muted);font-size:12px}.kv strong{font-size:16px}
+.risk{font-size:13px;color:var(--warn)}
+#login{max-width:420px;margin:60px auto;padding:0 16px}
+@media (max-width:720px){.wrap{grid-template-columns:minmax(0,1fr)}.side{flex-direction:row;flex-wrap:wrap}.side h1{flex-basis:100%}
+.form{grid-template-columns:minmax(0,1fr)}}
+</style></head><body>
+<div id="login" hidden><div class="panel"><h1>采购决策</h1><p class="small muted">输入管理令牌。令牌只保存在这个浏览器标签页里。</p>
+<input id="tok" type="password" autocomplete="off" placeholder="管理令牌"><button class="p" id="tokgo">进入</button><p class="small" id="tokerr"></p></div></div>
+<div class="wrap" id="app" hidden>
+  <aside class="side"><h1>采购决策</h1>
+    <button class="mi" data-v="todo">待拍板 <span class="badge" id="b-todo" hidden></span></button>
+    <button class="mi" data-v="pool">货源池</button>
+    <button class="mi" data-v="chan">货源渠道</button>
+    <button class="mi" data-v="exc">异常与人工 <span class="badge bad" id="b-exc" hidden></span></button>
+    <button class="mi" data-v="log">采购记录</button>
+    <button class="mi" data-v="codes">自家卡密</button>
+  </aside>
+  <div class="main"><div class="stats" id="stats"></div><div id="view" class="main"></div></div>
+</div>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const yuan=n=>(n===null||n===undefined||n==='')?'无':'¥'+Number(n).toFixed(2);
+let token='';try{token=sessionStorage.getItem('ops-t')||''}catch(e){}
+async function api(path,body){
+  const r=await fetch('/ops/api/'+path,{method:body?'POST':'GET',headers:{'x-admin-token':token,'content-type':'application/json'},body:body?JSON.stringify(body):undefined});
+  if(r.status===401){showLogin('令牌不对');throw new Error('unauthorized')}
+  return r.json();
+}
+function showLogin(msg){$('#app').hidden=true;$('#login').hidden=false;$('#tokerr').textContent=msg||''}
+$('#tokgo').onclick=()=>{token=$('#tok').value.trim();try{sessionStorage.setItem('ops-t',token)}catch(e){}boot()};
+$('#tok').addEventListener('keydown',e=>{if(e.key==='Enter')$('#tokgo').click()});
+let cur='todo';
+document.querySelectorAll('.mi').forEach(b=>b.onclick=()=>go(b.dataset.v));
+function go(v){cur=v;document.querySelectorAll('.mi').forEach(b=>b.classList.toggle('on',b.dataset.v===v));VIEWS[v]()}
+async function stats(){
+  const o=await api('overview');
+  const w=o.wallet===null?'<span class="pill off">未接通</span>':(o.wallet<=o.min_balance?'<span class="pill bad">低于下限</span>':'<span class="pill ok">够用</span>');
+  $('#stats').innerHTML=
+   '<div><small>运营钱包</small><strong class="num">'+(o.wallet===null?'无':yuan(o.wallet))+'</strong> '+w+'</div>'+
+   '<div><small>今日采购</small><strong class="num">'+o.orders_today+' 单</strong> <span class="small muted">上限 '+o.max_orders+'</span></div>'+
+   '<div><small>未兑换的码</small><strong class="num">'+o.unredeemed+' 个</strong></div>'+
+   '<div><small>采购模式</small><strong>'+(o.live?'真实':'模拟')+'</strong> <span class="pill '+(o.live?'warn':'info')+'">'+(o.live?'会扣钱包':'不扣钱')+'</span></div>';
+  const bt=$('#b-todo'),be=$('#b-exc');bt.hidden=!o.open_proposals;bt.textContent=o.open_proposals;be.hidden=!o.exceptions;be.textContent=o.exceptions;
+}
+const view=h=>{$('#view').innerHTML=h};
+const HEALTH={ok:['ok','在售'],near_cap:['warn','成本快到上限'],down:['bad','没有可买的货源'],unknown:['off','未巡检']};
+const STATUS={processing:['info','处理中'],awaiting_manual:['warn','等人工'],needs_review:['bad','需要核对'],waiting_stock:['warn','等货源'],delivered:['ok','已交付'],canceled:['off','已取消'],rejected:['off','被拒绝']};
+const VERDICT={chosen:'选它',candidate:'可买，没轮到',insufficient_stock:'缺货',price_exceeded:'超过上限价',insufficient_balance:'钱包不够',sku_unavailable:'下架或不可买',supplier_unreachable:'查价失败',rate_limited:'今天单数已到上限',manual_fallback:'转人工兜底',ambiguous:'下单结果不明',supplier_unconfigured:'渠道未接通'};
+const pill=(m,k)=>{const x=m[k]||['off',k];return '<span class="pill '+x[0]+'">'+esc(x[1])+'</span>'};
+
+const VIEWS={
+ async todo(){
+  const d=await api('proposals');const open=d.proposals.filter(p=>p.status==='open'),done=d.proposals.filter(p=>p.status!=='open').slice(0,10);
+  let h=open.length?'':'<div class="panel"><p class="muted">现在没有要你拍板的提案。</p></div>';
+  h+=open.map(p=>{
+   const src=(p.sources||[]).map(s=>'<tr><td>'+esc(s.name||s.label||'')+'<br><span class="mono muted">'+esc(s.goods_no||'')+'</span></td><td class="r num">'+yuan(s.total)+'</td><td class="r num">'+esc(s.stock??'')+'</td><td>'+esc(s.note||'')+'</td></tr>').join('');
+   const kv=p.type==='new_product'?'<div class="kv"><div><small>当前最低成本</small><strong class="num">'+yuan(p.cost)+'</strong></div><div><small>建议售价</small><strong class="num">'+yuan(p.price)+'</strong></div><div><small>预计毛利</small><strong class="num">'+(p.price&&p.cost?yuan(p.price-p.cost):'无')+'</strong></div><div><small>建议上限价</small><strong class="num">'+yuan(p.max_unit_cost)+'</strong></div></div>':'';
+   return '<div class="panel"><div class="head"><h2>'+esc(p.title)+'</h2><span><span class="pill '+(p.type==='new_product'?'info':'warn')+'">'+(p.type==='new_product'?'新增商品':'移出货源')+'</span> '+(p.mode?'<span class="pill off">'+(p.mode==='redeem'?'兑换模式':'直发模式')+'</span>':'')+'</span></div>'+kv+
+    (src?'<div class="tw"><table><thead><tr><th>货源</th><th class="r">含手续费</th><th class="r">库存</th><th>说明</th></tr></thead><tbody>'+src+'</tbody></table></div>':'')+
+    (p.reason?'<p class="small">理由：'+esc(p.reason)+'</p>':'')+(p.risk?'<p class="risk">要注意：'+esc(p.risk)+'</p>':'')+
+    '<div class="row"><button class="p" data-pa="'+p.id+'/approve">同意</button><button data-pa="'+p.id+'/reject">不要</button></div></div>'}).join('');
+  if(done.length)h+='<div class="panel"><h3>最近处理过的</h3>'+done.map(p=>'<p class="small">'+esc(p.created_at)+' '+esc(p.title)+' <span class="pill '+(p.status==='approved'?'ok':'off')+'">'+(p.status==='approved'?'已同意':'已拒绝')+'</span></p>').join('')+'</div>';
+  view(h);
+ },
+ async pool(){
+  const d=await api('pools');
+  let h='<div class="panel"><div class="head"><h2>货源池</h2><div class="row"><button id="sweep">立即巡检</button><button id="newp">新建商品</button></div></div><p class="small muted">'+esc(d.hint)+'。每 30 分钟自动巡检一次；买家下单或兑换时还会实时再查一次价。</p></div>';
+  h+=d.products.map(p=>poolCard(p)).join('');
+  view(h);
+ },
+ async chan(){
+  view('<div class="panel"><p class="muted">正在读取 16688 已代理货源…</p></div>');
+  const d=await api('channel/16688');
+  const rows=d.goods.map(g=>'<tr><td>'+esc(g.name)+'<br><span class="mono muted">'+esc(g.goods_no)+'</span></td><td class="r num">'+yuan(g.unit_price)+'</td><td class="r num">'+(Number(g.available_quantity)>0?esc(g.available_quantity):'<span class="pill off">缺货</span>')+'</td><td class="r num">'+esc(g.sales_count)+'</td><td>'+(g.in_pool?'<span class="pill ok">'+esc(g.in_pool)+'</span>':'<span class="pill off">未使用</span>')+'</td></tr>').join('');
+  view('<div class="panel"><div class="head"><h2>16688</h2><span class="pill '+(d.configured?'ok':'off')+'">'+(d.configured?'已接通，全自动':'未配置凭证')+'</span></div>'+
+   '<div class="kv"><div><small>去哪里看货</small>接口读取已代理的货源，新货源要在 16688 网页点「代理」</div><div><small>怎么查价</small>询价接口，实时返回货款、手续费、库存</div><div><small>怎么采购</small>下单接口，扣运营钱包</div></div>'+
+   '<div class="row"><button id="refresh">刷新货源列表</button><span class="small muted">共 '+d.goods.length+' 个，读取于 '+esc(d.at)+'。价格为货款，不含手续费。</span></div>'+
+   '<div class="tw"><table><thead><tr><th>货源</th><th class="r">货款</th><th class="r">库存</th><th class="r">销量</th><th>在哪个池</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>'+
+   '<div class="panel"><div class="head"><h2>人工渠道（Telegram 等）</h2><span class="pill warn">采购靠你</span></div><p class="small">没有接口的货源在货源池里加一条「人工」来源，填名称和可售数量。自动渠道都买不到时订单会转到「异常与人工」，你买好后粘贴卡密交付。</p></div>');
+ },
+ async exc(){
+  const d=await api('exceptions');
+  if(!d.orders.length){view('<div class="panel"><p class="muted">没有需要你处理的单。</p></div>');return}
+  view(d.orders.map(o=>'<div class="panel"><div class="head"><h2>'+esc(o.product)+' ×'+o.quantity+'</h2>'+pill(STATUS,o.status)+'</div>'+
+   '<p class="small"><span class="mono">'+esc(o.order_no)+'</span> · '+esc(o.created_at)+' · 来自'+esc(o.from)+(o.code?' · 卡密 <span class="mono">'+esc(o.code)+'</span>':'')+(o.supplier_ref?' · '+esc(o.supplier_ref):'')+'</p>'+
+   (o.error?'<p class="small muted">'+esc(o.error)+'</p>':'')+
+   (o.status==='needs_review'?'<p class="risk">下单结果不明，系统不会自动重试。请到 16688 采购记录核对这一单有没有扣款。</p>':'')+
+   '<label class="small muted" for="pl-'+esc(o.order_no)+'">卡密或交付内容</label><textarea id="pl-'+esc(o.order_no)+'" placeholder="粘贴后点交付，买家会立刻看到"></textarea>'+
+   '<div class="row"><button class="p" data-oa="deliver" data-no="'+esc(o.order_no)+'">交付</button>'+
+   (o.status==='needs_review'?'<button data-oa="retry" data-no="'+esc(o.order_no)+'">16688 没扣款，重新自动采购</button>':'')+
+   '<button data-oa="cancel" data-no="'+esc(o.order_no)+'">取消（需另行退款）</button></div></div>').join(''));
+ },
+ async log(){
+  const d=await api('log');
+  const rows=d.orders.map((o,i)=>'<tr><td class="num">'+esc(o.created_at)+'</td><td>'+esc(o.product)+'<br><span class="mono muted">'+esc(o.code||o.order_no)+'</span></td><td>'+esc(o.from)+'</td><td class="mono">'+esc(o.supplier_ref||o.supplier||'')+'</td><td class="r num">'+(Number(o.amount)?yuan(o.amount):'无')+'</td><td>'+pill(STATUS,o.status)+'</td><td>'+(o.trace.length?'<button data-tr="'+i+'">怎么选的</button>':'')+'</td></tr><tr id="tr-'+i+'" hidden><td colspan="7">'+trace(o.trace)+'</td></tr>').join('');
+  view('<div class="panel"><h2>采购记录</h2><div class="tw"><table><thead><tr><th>时间</th><th>商品</th><th>来自</th><th>货源单号</th><th class="r">成本</th><th>状态</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="7" class="muted">还没有记录</td></tr>')+'</tbody></table></div></div>');
+ },
+ async codes(){
+  const [d,pl]=await Promise.all([api('codes'),api('pools')]);
+  const opts=pl.products.filter(p=>p.mode==='redeem').map(p=>'<option value="'+p.sku_id+'">'+esc(p.title)+'</option>').join('');
+  const CS={ready:['info','未兑换'],delivered:['ok','已兑换'],processing:['warn','处理中'],expired:['off','已过期'],voided:['off','已作废']};
+  const rows=d.codes.map(c=>'<tr><td class="mono">'+esc(c.code)+'</td><td>'+esc(c.product)+'</td><td>'+(c.channel==='dujiao'?'卡网':'批量')+'</td><td class="num">'+esc(c.issued_at)+'</td><td class="num">'+esc(c.expires_at)+'</td><td>'+pill(CS,c.state)+'</td><td>'+(c.state==='ready'?'<button data-void="'+esc(c.code)+'">作废</button>':'')+'</td></tr>').join('');
+  view('<div class="panel"><h2>批量生成卡密</h2><p class="small muted">给闲鱼助手等渠道导入用。只有「兑换模式」的商品能生成。生成不花钱，买家兑换时才采购。</p>'+
+   (opts?'<div class="row"><select id="gsku" aria-label="商品">'+opts+'</select><input id="gn" type="number" min="1" max="200" value="5" aria-label="数量" style="width:90px"><button class="p" id="gen">生成</button></div><textarea id="gout" readonly hidden></textarea>':'<p class="small">还没有兑换模式的商品。</p>')+'</div>'+
+   '<div class="panel"><h2>自家卡密</h2><div class="tw"><table><thead><tr><th>卡密</th><th>商品</th><th>来源</th><th>发出</th><th>有效期到</th><th>状态</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="7" class="muted">还没有发出过卡密</td></tr>')+'</tbody></table></div></div>');
+ }
+};
+function trace(t){return '<div class="tw"><table><thead><tr><th>货源</th><th class="r">总价</th><th class="r">库存</th><th>结论</th></tr></thead><tbody>'+t.map(x=>'<tr><td class="mono">'+esc(x.src)+'</td><td class="r num">'+(x.total?yuan(x.total):'无')+'</td><td class="r num">'+esc(x.stock??'')+'</td><td>'+(x.verdict==='chosen'?'<span class="pill ok">选它</span>':esc(VERDICT[x.verdict]||x.verdict))+'</td></tr>').join('')+'</tbody></table></div>'}
+let POOLS={};
+function poolCard(p){
+  POOLS[p.sku_id]=p;
+  const rows=p.sources.map((s,i)=>{const q=s.quote;
+   const price=s.type==='manual'?'手填':(q?(q.ok?yuan(q.total):'<span class="pill bad">'+esc(q.message||'不可买')+'</span>'):'未查');
+   const stock=s.type==='manual'?esc(s.stock):(q&&q.ok?(q.stock>0?q.stock:'<span class="pill off">缺货</span>'):'');
+   return '<tr><td><input type="checkbox" data-f="enabled" data-i="'+i+'" '+(s.enabled?'checked':'')+' aria-label="启用"></td><td>'+(s.type==='16688'?'16688':'人工')+'</td><td class="mono">'+esc(s.goods_no||s.label)+'</td><td class="r num">'+price+'</td><td class="r num">'+stock+'</td><td><input data-f="note" data-i="'+i+'" value="'+esc(s.note)+'" aria-label="说明" placeholder="给买家看的说明"></td><td><button data-rm="'+i+'">移出</button></td></tr>'}).join('');
+  return '<div class="panel" data-sku="'+p.sku_id+'"><div class="head"><h2>'+esc(p.title)+'</h2>'+pill(HEALTH,p.health)+'</div>'+
+   '<div class="form">'+
+   '<label>发货模式</label><select data-p="mode"><option value="direct"'+(p.mode==='direct'?' selected':'')+'>直发：付款时采购</option><option value="redeem"'+(p.mode==='redeem'?' selected':'')+'>兑换：发自家卡密，兑换时采购</option></select>'+
+   '<label>最高采购价（含手续费，0 为不限）</label><input data-p="max_unit_cost" type="number" step="0.01" value="'+p.max_unit_cost+'">'+
+   '<label>报给卡网的基准价</label><input data-p="cost" type="number" step="0.01" value="'+p.cost+'">'+
+   '<label>选源规则</label><select data-p="rule"><option value="cheapest"'+(p.rule==='cheapest'?' selected':'')+'>有货且不超上限，选总价最低</option><option value="order"'+(p.rule==='order'?' selected':'')+'>按下面的顺序</option></select>'+
+   '<label>卡密有效期（天）</label><input data-p="valid_days" type="number" min="1" value="'+p.valid_days+'">'+
+   '<label>兑换前提醒（分钟，0 为不提醒）</label><input data-p="warn_minutes" type="number" min="0" value="'+p.warn_minutes+'">'+
+   '<label>给买家的使用说明</label><input data-p="instruction" value="'+esc(p.instruction)+'">'+
+   '<label>隐藏上游自带的说明</label><select data-p="hide_upstream_note"><option value="0"'+(p.hide_upstream_note?'':' selected')+'>不隐藏</option><option value="1"'+(p.hide_upstream_note?' selected':'')+'>隐藏（避免暴露货源）</option></select>'+
+   '</div><div class="tw"><table><thead><tr><th>启用</th><th>渠道</th><th>货源</th><th class="r">现价</th><th class="r">库存</th><th>说明</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+   '<div class="row"><input data-add="goods" placeholder="16688 货源编号，如 G24324524" style="width:230px"><button data-addbtn="16688">加入 16688 货源</button><input data-add="label" placeholder="人工来源名称" style="width:150px"><input data-add="stock" type="number" min="0" placeholder="可售数量" style="width:100px"><button data-addbtn="manual">加入人工来源</button></div>'+
+   '<div class="row"><button class="p" data-save="1">保存</button><span class="small muted" data-msg></span></div></div>';
+}
+function collect(card){
+  const p=POOLS[card.dataset.sku];const d={sku_id:p.sku_id,sources:p.sources.map(s=>({...s}))};
+  card.querySelectorAll('[data-p]').forEach(el=>{const k=el.dataset.p;d[k]=k==='hide_upstream_note'?el.value==='1':el.value});
+  card.querySelectorAll('[data-f]').forEach(el=>{d.sources[el.dataset.i][el.dataset.f]=el.type==='checkbox'?el.checked:el.value});
+  return d;
+}
+document.addEventListener('click',async e=>{
+  const t=e.target;
+  if(t.dataset.pa){await api('proposals/'+t.dataset.pa,{});await stats();go('todo')}
+  else if(t.id==='sweep'){t.disabled=true;t.textContent='巡检中…';await api('sweep',{});go('pool')}
+  else if(t.id==='newp'){const title=$('#newtitle');if(!title){t.insertAdjacentHTML('afterend','<input id="newtitle" placeholder="商品名称"><button id="newok" class="p">创建</button>')}}
+  else if(t.id==='newok'){const v=$('#newtitle').value.trim();if(v){await api('pools/save',{title:v,sources:[]});go('pool')}}
+  else if(t.id==='refresh'){view('<div class="panel"><p class="muted">正在刷新…</p></div>');await api('channel/16688?refresh=1');go('chan')}
+  else if(t.dataset.save||t.dataset.rm!==undefined||t.dataset.addbtn){
+    const card=t.closest('[data-sku]');const d=collect(card);
+    if(t.dataset.rm!==undefined)d.sources.splice(Number(t.dataset.rm),1);
+    if(t.dataset.addbtn==='16688'){const g=card.querySelector('[data-add=goods]').value.trim();if(!g)return;d.sources.push({type:'16688',goods_no:g,enabled:true})}
+    if(t.dataset.addbtn==='manual'){const l=card.querySelector('[data-add=label]').value.trim();if(!l)return;d.sources.push({type:'manual',label:l,stock:Number(card.querySelector('[data-add=stock]').value||0),enabled:true})}
+    const r=await api('pools/save',d);
+    if(r.ok){if(t.dataset.save){card.querySelector('[data-msg]').textContent='已保存，下一单起生效'}else{await api('sweep',{});go('pool')}}
+    else card.querySelector('[data-msg]').textContent='没保存：'+(r.error_message||'');
+  }
+  else if(t.dataset.oa){
+    const no=t.dataset.no,body={order_no:no};
+    if(t.dataset.oa==='deliver'){body.payload=document.getElementById('pl-'+no).value;if(!body.payload.trim())return}
+    if(t.dataset.oa==='cancel'&&!t.dataset.sure){t.dataset.sure='1';t.textContent='再点一次确认取消';return}
+    await api('orders/'+t.dataset.oa,body);await stats();go('exc');
+  }
+  else if(t.dataset.tr!==undefined){const r=document.getElementById('tr-'+t.dataset.tr);r.hidden=!r.hidden}
+  else if(t.id==='gen'){const r=await api('codes/generate',{sku_id:Number($('#gsku').value),n:Number($('#gn').value)});if(r.ok){await stats();await VIEWS.codes();const o=$('#gout');o.hidden=false;o.value=r.codes.join('\n')}}
+  else if(t.dataset.void){if(!t.dataset.sure){t.dataset.sure='1';t.textContent='确认作废';return}await api('codes/void',{code:t.dataset.void});await stats();go('codes')}
+});
+async function boot(){
+  if(!token){showLogin('');return}
+  try{await stats()}catch(e){return}
+  $('#login').hidden=true;$('#app').hidden=false;go(cur);
+}
+boot();
+</script></body></html>

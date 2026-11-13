@@ -13,6 +13,9 @@ from starlette.routing import Route
 from . import auth
 from .config import Config, Product, from_env
 from .fulfil import Fulfiller, Notifier, dujiao_status, fulfillment
+from .ops import ops_routes
+from .public import build_public_app
+from .redeem import Redeemer
 from .store import OPEN_STATES, Store
 from .suppliers import Client16688, Supplier16688
 
@@ -24,19 +27,32 @@ def _iso(ts: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
 
 
+class Core:
+    """Everything the internal app (Dujiao upstream + /ops) and the public redeem app share."""
+
+    def __init__(self, cfg: Config, transport: httpx.BaseTransport | None = None):
+        self.cfg = cfg
+        self.store = Store(cfg.db_path)
+        self.sup = Supplier16688(Client16688(cfg.app_id, cfg.secret, cfg.base_url, transport), cfg.live,
+                                 cfg.min_balance)
+        self.notify = Notifier(cfg.feishu_webhook, cfg.notify_prefix, transport)
+        self.ful = Fulfiller(cfg, self.store, self.sup, self.notify, transport)
+        self.redeemer = Redeemer(cfg, self.store, self.ful)
+        self.ful.recover()
+
+
 def build_app(cfg: Config, transport: httpx.BaseTransport | None = None, start_worker: bool = True) -> Starlette:
-    store = Store(cfg.db_path)
-    sup = Supplier16688(Client16688(cfg.app_id, cfg.secret, cfg.base_url, transport), cfg.live, cfg.min_balance)
-    notify = Notifier(cfg.feishu_webhook, cfg.notify_prefix, transport)
-    ful = Fulfiller(cfg, store, sup, notify, transport)
-    ful.recover()
+    core = Core(cfg, transport)
+    store, sup, notify, ful = core.store, core.sup, core.notify, core.ful
 
     def fail(status: int, code: str, message: str = "") -> JSONResponse:
         return JSONResponse({"ok": False, "error_code": code, "error_message": message or code}, status_code=status)
 
     def stock_of(p: Product) -> int:
-        """Advertised stock: the first source that can sell right now."""
+        """Advertised stock: the first enabled pool member that can sell right now."""
         for s in p.sources:
+            if not s.enabled:
+                continue
             if s.type == "16688":
                 info = sup.info(s.goods_no)
                 n = int(info["available_quantity"]) if info else s.stock
@@ -122,6 +138,11 @@ def build_app(cfg: Config, transport: httpx.BaseTransport | None = None, start_w
             store.reopen(row["id"], cb)                    # refused earlier with no money moved: retry allowed
         else:
             row = store.create(sku_id, p.id, qty, downstream, cb)
+        if p.mode == "redeem":
+            # Sell now, buy later: hand Dujiao our own codes. No money moves until the buyer redeems.
+            codes = core.redeemer.issue(p, qty, "dujiao", row["order_no"])
+            store.finish(row["id"], "delivered", payload=core.redeemer.delivery_text(p, codes))
+            return JSONResponse(order_json(store.get(row["id"])))
         code = ful.process(store.get(row["id"]), p)
         row = store.get(row["id"])
         if code:
@@ -202,8 +223,10 @@ def build_app(cfg: Config, transport: httpx.BaseTransport | None = None, start_w
         Route("/admin/api/pending", admin_pending, methods=["GET"]),
         Route("/admin/api/{action:str}", admin_act, methods=["POST"]),
         Route("/health", health, methods=["GET"]),
-    ]
+    ] + ops_routes(core)
     app = Starlette(routes=routes)
+    app.state.core = core
+    app.state.public = build_public_app(core)
     app.state.fulfiller = ful
     app.state.store = store
     app.state.notifier = notify
@@ -234,7 +257,20 @@ def build_from_env():
 
 
 def main() -> None:
+    import asyncio
+
     import uvicorn
 
-    uvicorn.run(build_from_env(), host=os.environ.get("HOST", "0.0.0.0"),
-                port=int(os.environ.get("PORT", "3000")), log_level="info")
+    app = build_from_env()
+    app.state.core.ful.sweep_gap = 1.0
+    host = os.environ.get("HOST", "0.0.0.0")
+    servers = [uvicorn.Server(uvicorn.Config(app, host=host, port=int(os.environ.get("PORT", "3000")),
+                                             log_level="info")),
+               uvicorn.Server(uvicorn.Config(app.state.public, host=host,
+                                             port=int(os.environ.get("PUBLIC_PORT", "3001")), log_level="info",
+                                             proxy_headers=False))]
+
+    async def run():
+        await asyncio.gather(*(s.serve() for s in servers))
+
+    asyncio.run(run())
