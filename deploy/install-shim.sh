@@ -6,6 +6,7 @@ D=/opt/dujiao-shim
 REPO=${REPO:-https://github.com/Gsxcheng/16688-mcp}
 IMG=gsx/16688-mcp:latest
 PORT=${PORT:-3360}
+PUB=${PUB:-3361}
 MCP_ENV=/opt/16688-mcp/.env
 GW=$(docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}' 2>/dev/null || echo 172.17.0.1)
 
@@ -22,10 +23,11 @@ git log -1 --format='当前版本：%h %s'
 echo "== 2/5 配置（已存在则保留）"
 umask 077
 touch .env
-grep -q '^SHIM_API_KEY=.' .env || echo "SHIM_API_KEY=gg-shim" >> .env
+grep -q '^SHIM_API_KEY=.' .env || echo "SHIM_API_KEY=gg-upstream" >> .env
 grep -q '^SHIM_API_SECRET=.\{32,\}' .env || echo "SHIM_API_SECRET=$(openssl rand -hex 32)" >> .env
 grep -q '^SHIM_ADMIN_TOKEN=.\{32,\}' .env || echo "SHIM_ADMIN_TOKEN=$(openssl rand -hex 32)" >> .env
 grep -q '^SHIM_CALLBACK_URL=' .env || echo "SHIM_CALLBACK_URL=https://shop.gsxcheng.ltd/api/v1/upstream/callback" >> .env
+grep -q '^SHIM_REDEEM_URL=' .env || echo "SHIM_REDEEM_URL=https://shop.gsxcheng.ltd/redeem/" >> .env
 grep -q '^SHIM_MAX_ORDERS_PER_DAY=' .env || echo "SHIM_MAX_ORDERS_PER_DAY=20" >> .env
 grep -q '^SHIM_MIN_BALANCE=' .env || echo "SHIM_MIN_BALANCE=0" >> .env
 if ! grep -q '^OPEN16688_APP_ID=.' .env; then
@@ -57,7 +59,7 @@ docker build -t "$IMG" --build-arg PIP_INDEX_URL=https://mirrors.cloud.tencent.c
 
 echo "== 5/5 启动容器 dujiao-shim（127.0.0.1:$PORT 和 $GW:$PORT）"
 docker rm -f dujiao-shim >/dev/null 2>&1 || true
-docker run -d --name dujiao-shim --restart unless-stopped --env-file .env -e SHIM_DB=/data/shim.db -e SHIM_CATALOG=/data/catalog.json -v "$D/data:/data" -p 127.0.0.1:$PORT:3000 -p $GW:$PORT:3000 --read-only --tmpfs /tmp:rw,noexec,nosuid,size=16m --cap-drop ALL --security-opt no-new-privileges:true --memory 128m --cpus 0.5 --pids-limit 64 --log-opt max-size=5m --log-opt max-file=2 "$IMG" dujiao-shim >/dev/null
+docker run -d --name dujiao-shim --restart unless-stopped --env-file .env -e SHIM_DB=/data/shim.db -e SHIM_CATALOG=/data/catalog.json -v "$D/data:/data" -p 127.0.0.1:$PORT:3000 -p $GW:$PORT:3000 -p 127.0.0.1:$PUB:3001 --read-only --tmpfs /tmp:rw,noexec,nosuid,size=16m --cap-drop ALL --security-opt no-new-privileges:true --memory 128m --cpus 0.5 --pids-limit 64 --log-opt max-size=5m --log-opt max-file=2 "$IMG" dujiao-shim >/dev/null
 sleep 4
 docker ps --filter name=dujiao-shim --format '{{.Names}}  {{.Status}}  {{.Ports}}'
 echo -n "健康检查： "; curl -s http://127.0.0.1:$PORT/health; echo
@@ -67,8 +69,9 @@ cat <<NEXT
 
 == 安装完成。在 Dujiao 后台新增「对接连接」时填：
   站点地址： http://$GW:$PORT
-  API Key：  gg-shim
+  API Key：  gg-upstream
   API Secret：执行  grep SHIM_API_SECRET $D/.env  取值
   回调地址（Callback URL）：https://shop.gsxcheng.ltd/api/v1/upstream/callback
-人工采购后台令牌：执行  grep SHIM_ADMIN_TOKEN $D/.env
+决策后台：  http://127.0.0.1:$PORT/ops （只在内网端口；令牌执行  grep SHIM_ADMIN_TOKEN $D/.env  取值）
+买家兑换页：http://127.0.0.1:$PUB/ （单独端口，只有兑换功能；对外时把 shop.gsxcheng.ltd/redeem/ 指到这个端口）
 NEXT

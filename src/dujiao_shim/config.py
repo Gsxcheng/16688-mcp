@@ -1,6 +1,6 @@
 """Environment + product catalog for the shim."""
 import json
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 
@@ -12,6 +12,8 @@ class Source:
     max_unit_cost: float = 0.0     # refuse to buy when the 16688 total per unit exceeds this (fee included)
     label: str = ""                # human label shown in notifications (type "manual")
     stock: int = 0                 # advertised stock for a manual source (0 = not available)
+    note: str = ""                 # our own usage note shown to the buyer instead of the supplier's text
+    enabled: bool = True           # disabled pool members are kept in the catalog but never bought from
 
 
 @dataclass
@@ -24,7 +26,14 @@ class Product:
     cost: float                    # advertised upstream price; Dujiao adds its own markup on top
     category_id: int = 1
     images: list[str] = field(default_factory=list)
-    sources: list[Source] = field(default_factory=list)
+    sources: list[Source] = field(default_factory=list)   # the pool
+    mode: str = "direct"           # "direct" = buy when Dujiao orders; "redeem" = issue our own code, buy on redemption
+    rule: str = "cheapest"         # "cheapest" = quote every 16688 pool member, buy the cheapest; "order" = list order
+    max_unit_cost: float = 0.0     # pool-wide ceiling (fee included) for members without their own
+    valid_days: int = 7            # lifetime of an issued code
+    warn_minutes: int = 0          # >0: the redeem page asks the buyer to confirm they will use it within N minutes
+    instruction: str = ""          # our own instruction shown on the redeem page
+    hide_upstream_note: bool = False   # do not pass the supplier's instruction text on to the buyer
 
 
 @dataclass
@@ -45,6 +54,11 @@ class Config:
     feishu_webhook: str = ""
     notify_prefix: str = "GG Shop 采购提醒"
     poll_seconds: float = 5.0
+    catalog_path: str = ""         # when set, pool edits made in /ops are written back here
+    redeem_url: str = "https://shop.gsxcheng.ltd/redeem/"
+    sweep_seconds: float = 1800.0  # pool health check interval
+    retry_seconds: float = 300.0   # how often redemptions waiting for stock are retried
+    redeem_per_minute: int = 10    # per-IP limit on the public redeem API
 
     def product_by_sku(self, sku_id: int) -> Product | None:
         return next((p for p in self.products if p.sku_id == sku_id), None)
@@ -66,6 +80,13 @@ def load_products(path: str) -> list[Product]:
     return out
 
 
+def save_products(path: str, products: list[Product]) -> None:
+    """Atomically write the catalog back (pool edits from /ops)."""
+    tmp = Path(path).with_suffix(".tmp")
+    tmp.write_text(json.dumps([asdict(p) for p in products], ensure_ascii=False, indent=2), "utf-8")
+    tmp.replace(path)
+
+
 def from_env(env: dict[str, str]) -> Config:
     def need(name: str, min_len: int = 1) -> str:
         v = env.get(name, "").strip()
@@ -79,6 +100,8 @@ def from_env(env: dict[str, str]) -> Config:
         admin_token=need("SHIM_ADMIN_TOKEN", 32),
         db_path=env.get("SHIM_DB", "/data/shim.db"),
         products=load_products(env.get("SHIM_CATALOG", "/data/catalog.json")),
+        catalog_path=env.get("SHIM_CATALOG", "/data/catalog.json"),
+        redeem_url=env.get("SHIM_REDEEM_URL", "https://shop.gsxcheng.ltd/redeem/"),
         app_id=env.get("OPEN16688_APP_ID", ""),
         secret=env.get("OPEN16688_SECRET", ""),
         base_url=env.get("OPEN16688_BASE_URL", "https://www.16688.com.cn").rstrip("/"),
