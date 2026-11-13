@@ -22,7 +22,7 @@ git log -1 --format='当前版本：%h %s'
 echo "== 2/5 配置（已存在则保留）"
 umask 077
 touch .env
-grep -q '^SHIM_API_KEY=.' .env || echo "SHIM_API_KEY=gg-shim" >> .env
+grep -q '^SHIM_API_KEY=.' .env || echo "SHIM_API_KEY=gg-upstream" >> .env
 grep -q '^SHIM_API_SECRET=.\{32,\}' .env || echo "SHIM_API_SECRET=$(openssl rand -hex 32)" >> .env
 grep -q '^SHIM_ADMIN_TOKEN=.\{32,\}' .env || echo "SHIM_ADMIN_TOKEN=$(openssl rand -hex 32)" >> .env
 grep -q '^SHIM_CALLBACK_URL=' .env || echo "SHIM_CALLBACK_URL=https://shop.gsxcheng.ltd/api/v1/upstream/callback" >> .env
@@ -67,7 +67,7 @@ cat <<NEXT
 
 == 安装完成。在 Dujiao 后台新增「对接连接」时填：
   站点地址： http://$GW:$PORT
-  API Key：  gg-shim
+  API Key：  gg-upstream
   API Secret：执行  grep SHIM_API_SECRET $D/.env  取值
   回调地址（Callback URL）：https://shop.gsxcheng.ltd/api/v1/upstream/callback
 人工采购后台令牌：执行  grep SHIM_ADMIN_TOKEN $D/.env

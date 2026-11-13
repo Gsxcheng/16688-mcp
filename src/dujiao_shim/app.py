@@ -53,7 +53,7 @@ def build_app(cfg: Config, transport: httpx.BaseTransport | None = None, start_w
         now = _iso(time.time())
         return {
             "id": p.id, "slug": p.slug, "title": {LANG: p.title}, "description": {LANG: p.description},
-            "content": {}, "seo_meta": {}, "images": p.images, "tags": [], "price_amount": price,
+            "content": {}, "seo_meta": {}, "images": p.images, "tags": [], "price_amount": price, "currency": "CNY",
             "fulfillment_type": "auto", "manual_form_schema": None, "is_active": True,
             "category_id": p.category_id,
             "skus": [{"id": p.sku_id, "sku_code": "DEFAULT", "spec_values": {}, "price_amount": price,

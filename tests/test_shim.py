@@ -335,3 +335,23 @@ def test_health_and_catalog_loader(tmp_path, up):
                              {"id": 2, "sku_id": 1, "slug": "b", "title": "", "description": "", "cost": 1}]))
     with pytest.raises(ValueError):
         load_products(str(f))
+
+
+def test_installer_default_api_key_passes_startup_validation(tmp_path):
+    """Regression: the installer's default SHIM_API_KEY was 7 characters and the service refused to start."""
+    import re
+    from pathlib import Path
+    from dujiao_shim.config import from_env
+    script = (Path(__file__).parent.parent / "deploy" / "install-shim.sh").read_text()
+    key = re.search(r'echo "SHIM_API_KEY=([^"]+)"', script).group(1)
+    catalog = Path(__file__).parent.parent / "deploy" / "shim-catalog.example.json"
+    env = {"SHIM_API_KEY": key, "SHIM_API_SECRET": "s" * 64, "SHIM_ADMIN_TOKEN": "t" * 64,
+           "SHIM_CATALOG": str(catalog), "SHIM_DB": str(tmp_path / "x.db")}
+    assert from_env(env).api_key == key
+    assert key in script.split("API Key：")[1].split("\n")[0]
+
+
+def test_products_advertise_currency(tmp_path, up):
+    _, c = make(tmp_path, up)
+    item = call(c, "GET", "/api/v1/upstream/products").json()["items"][0]
+    assert item["currency"] == "CNY"
