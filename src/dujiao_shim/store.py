@@ -26,10 +26,31 @@ CREATE TABLE IF NOT EXISTS orders (
   delivered_at REAL
 );
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+CREATE TABLE IF NOT EXISTS codes (
+  code TEXT PRIMARY KEY,           -- our own redeem code (GG-XXXXX-XXXXX-XXXXX-XXXXX)
+  sku_id INTEGER NOT NULL,
+  channel TEXT NOT NULL,           -- dujiao | batch
+  channel_ref TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL,            -- issued | redeeming | voided
+  order_id INTEGER,                -- the purchase order created at redemption
+  issued_at REAL NOT NULL,
+  expires_at REAL NOT NULL,
+  redeemed_at REAL,
+  note TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_codes_ref ON codes(channel, channel_ref);
+CREATE TABLE IF NOT EXISTS proposals (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  status TEXT NOT NULL DEFAULT 'open',   -- open | approved | rejected
+  body TEXT NOT NULL,                    -- JSON
+  created_at REAL NOT NULL,
+  decided_at REAL
+);
 """
 
 # 'rejected' = refused before any money moved; Dujiao may retry the same downstream_order_no.
-OPEN_STATES = ("processing", "awaiting_manual", "needs_review")
+# 'waiting_stock' = a redemption no source could serve; nothing was charged and it is retried automatically.
+OPEN_STATES = ("processing", "awaiting_manual", "needs_review", "waiting_stock")
 
 
 class Store:
@@ -39,6 +60,9 @@ class Store:
         self._lock = threading.Lock()
         with self._lock:
             self._db.executescript(SCHEMA)
+            cols = {r["name"] for r in self._db.execute("PRAGMA table_info(orders)")}
+            if "trace" not in cols:   # how the source was chosen (JSON), added after the first release
+                self._db.execute("ALTER TABLE orders ADD COLUMN trace TEXT NOT NULL DEFAULT ''")
 
     def _one(self, sql: str, args=()):
         with self._lock:
@@ -96,7 +120,64 @@ class Store:
         return self._all("SELECT * FROM orders WHERE status='processing' AND supplier='16688' AND supplier_ref=''")
 
     def pending_manual(self):
-        return self._all("SELECT * FROM orders WHERE status IN ('awaiting_manual','needs_review') ORDER BY id")
+        return self._all("SELECT * FROM orders WHERE status IN ('awaiting_manual','needs_review','waiting_stock')"
+                         " ORDER BY id")
+
+    def waiting_stock(self):
+        return self._all("SELECT * FROM orders WHERE status='waiting_stock' ORDER BY id")
+
+    def recent(self, limit: int = 50):
+        return self._all("SELECT * FROM orders ORDER BY id DESC LIMIT ?", (limit,))
+
+    # ---- redeem codes ---------------------------------------------------------------------------
+    def add_code(self, code: str, sku_id: int, channel: str, channel_ref: str, expires_at: float) -> None:
+        self._run("INSERT INTO codes(code, sku_id, channel, channel_ref, status, issued_at, expires_at)"
+                  " VALUES(?,?,?,?, 'issued', ?, ?)", (code, sku_id, channel, channel_ref, time.time(), expires_at))
+
+    def code(self, code: str):
+        return self._one("SELECT * FROM codes WHERE code=?", (code,))
+
+    def codes_by_ref(self, channel: str, channel_ref: str):
+        return self._all("SELECT * FROM codes WHERE channel=? AND channel_ref=? ORDER BY rowid", (channel, channel_ref))
+
+    def code_by_order(self, order_id: int):
+        return self._one("SELECT * FROM codes WHERE order_id=?", (order_id,))
+
+    def claim_code(self, code: str) -> bool:
+        """issued -> redeeming, atomically. Only the caller that gets True may spend money for this code."""
+        cur = self._run("UPDATE codes SET status='redeeming', redeemed_at=? WHERE code=? AND status='issued'",
+                        (time.time(), code))
+        return cur.rowcount == 1
+
+    def update_code(self, code: str, **fields) -> None:
+        cols = ", ".join(f"{k}=?" for k in fields)
+        self._run(f"UPDATE codes SET {cols} WHERE code=?", (*fields.values(), code))
+
+    def orphan_claims(self):
+        return self._all("SELECT * FROM codes WHERE status='redeeming' AND order_id IS NULL")
+
+    def list_codes(self, limit: int = 100):
+        return self._all("SELECT * FROM codes ORDER BY issued_at DESC, rowid DESC LIMIT ?", (limit,))
+
+    def count_unredeemed(self) -> int:
+        return self._one("SELECT COUNT(*) AS n FROM codes WHERE status='issued'")["n"]
+
+    # ---- proposals ------------------------------------------------------------------------------
+    def add_proposal(self, body: str) -> int:
+        return self._run("INSERT INTO proposals(body, created_at) VALUES(?, ?)", (body, time.time())).lastrowid
+
+    def proposals(self, status: str | None = None):
+        if status:
+            return self._all("SELECT * FROM proposals WHERE status=? ORDER BY id DESC", (status,))
+        return self._all("SELECT * FROM proposals ORDER BY id DESC LIMIT 100")
+
+    def proposal(self, pid: int):
+        return self._one("SELECT * FROM proposals WHERE id=?", (pid,))
+
+    def decide_proposal(self, pid: int, status: str) -> bool:
+        cur = self._run("UPDATE proposals SET status=?, decided_at=? WHERE id=? AND status='open'",
+                        (status, time.time(), pid))
+        return cur.rowcount == 1
 
     def orders_today(self, since: float) -> int:
         row = self._one("SELECT COUNT(*) AS n FROM orders WHERE created_at>=? AND supplier='16688'", (since,))

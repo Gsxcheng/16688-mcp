@@ -1,23 +1,14 @@
 [
   {
-    "id": 1, "sku_id": 101, "slug": "gemini-pro-6m", "category_id": 1,
-    "title": "Gemini Pro 6个月 激活卡密",
-    "description": "自助兑换卡密。上游无质保，激活成功后不退款；兑换需在第三方兑换站提交账号信息，新号易触发风控，建议使用老号；账号不能已有会员。",
-    "cost": 8.22,
-    "sources": [{"type": "16688", "goods_no": "G81445970", "max_unit_cost": 9.0}]
-  },
-  {
-    "id": 2, "sku_id": 102, "slug": "gemini-pro-12m", "category_id": 1,
-    "title": "Gemini Pro 12个月 激活卡密",
-    "description": "自助兑换卡密。上游无质保，激活成功后不退款；兑换需在第三方兑换站提交账号信息，新号易触发风控，建议使用老号；账号不能已有会员。",
-    "cost": 12.34,
-    "sources": [{"type": "16688", "goods_no": "G89750228", "max_unit_cost": 13.5}]
-  },
-  {
-    "id": 3, "sku_id": 103, "slug": "gemini-pro-24m", "category_id": 1,
-    "title": "Gemini Pro 24个月 激活卡密",
-    "description": "自助兑换卡密。上游无质保，激活成功后不退款；兑换需在第三方兑换站提交账号信息，新号易触发风控，建议使用老号；账号不能已有会员。",
-    "cost": 17.48,
-    "sources": [{"type": "16688", "goods_no": "G63803286", "max_unit_cost": 19.0}]
+    "id": 1, "sku_id": 101, "slug": "gpt-plus-1m", "category_id": 1,
+    "title": "示例：GPT Plus 月卡 直充",
+    "description": "示例商品。mode=redeem：卖出时只发自家卡密，买家兑换时才在货源池里挑最便宜且有货的采购。",
+    "cost": 107.5, "mode": "redeem", "rule": "cheapest", "max_unit_cost": 125.0, "valid_days": 7,
+    "instruction": "兑换成功后按页面提示使用。",
+    "sources": [
+      {"type": "16688", "goods_no": "G24324524"},
+      {"type": "16688", "goods_no": "G61972301"},
+      {"type": "manual", "label": "TG 人工采购", "stock": 0, "note": "库存填 0 表示不启用兜底"}
+    ]
   }
 ]
