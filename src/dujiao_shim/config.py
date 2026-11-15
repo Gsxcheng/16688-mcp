@@ -59,6 +59,7 @@ class Config:
     sweep_seconds: float = 1800.0  # pool health check interval
     retry_seconds: float = 300.0   # how often redemptions waiting for stock are retried
     redeem_per_minute: int = 10    # per-IP limit on the public redeem API
+    dujiao_url: str = ""           # when set, a logged-in Dujiao admin's token also opens /ops/api
 
     def product_by_sku(self, sku_id: int) -> Product | None:
         return next((p for p in self.products if p.sku_id == sku_id), None)
@@ -102,6 +103,7 @@ def from_env(env: dict[str, str]) -> Config:
         products=load_products(env.get("SHIM_CATALOG", "/data/catalog.json")),
         catalog_path=env.get("SHIM_CATALOG", "/data/catalog.json"),
         redeem_url=env.get("SHIM_REDEEM_URL", "https://shop.gsxcheng.ltd/redeem/"),
+        dujiao_url=env.get("SHIM_DUJIAO_URL", ""),
         app_id=env.get("OPEN16688_APP_ID", ""),
         secret=env.get("OPEN16688_SECRET", ""),
         base_url=env.get("OPEN16688_BASE_URL", "https://www.16688.com.cn").rstrip("/"),

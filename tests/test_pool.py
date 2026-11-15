@@ -330,3 +330,30 @@ def test_open_proposal_shows_live_price(tmp_path, up):
     p = c.get("/ops/api/proposals", headers=H).json()["proposals"][0]
     assert p["cost"] == 8.0 and [s.get("total") for s in p["sources"]] == [8.0, None, None]
     assert p["sources"][1]["note"] == "已下架或查不到"
+
+
+def test_dujiao_admin_token_opens_ops(tmp_path, up):
+    seen = []
+
+    def dj(req: httpx.Request) -> httpx.Response:
+        if req.url.host == "dj-app":
+            seen.append(req.headers.get("authorization"))
+            ok = req.headers.get("authorization") == "Bearer good"
+            return httpx.Response(200, json={"status_code": 0 if ok else 401, "msg": "x"})
+        return up(req)
+
+    prod = Product(id=1, sku_id=101, slug="p1", title="T", description="", cost=1.0)
+    cfg = Config(api_key=KEY, api_secret=SECRET, admin_token=ADMIN, db_path=str(tmp_path / "s.db"), products=[prod],
+                 app_id="a", secret="s", dujiao_url="http://dj-app:8080")
+    c = TestClient(build_app(cfg, transport=httpx.MockTransport(dj), start_worker=False))
+    assert c.get("/ops/api/overview", headers={"authorization": "Bearer bad"}).status_code == 401
+    assert c.get("/ops/api/overview", headers={"authorization": "Bearer good"}).json()["ok"]
+    assert c.get("/ops/api/pools", headers={"authorization": "Bearer good"}).json()["ok"]
+    assert seen == ["Bearer bad", "Bearer good"]          # second good call came from the cache
+    assert c.get("/ops/api/overview", headers={"authorization": "good"}).status_code == 401
+
+
+def test_dujiao_token_ignored_without_dujiao_url(tmp_path, up):
+    _, c, _ = make(tmp_path, up)
+    assert c.get("/ops/api/overview", headers={"authorization": "Bearer good"}).status_code == 401
+    assert not any("site-connections" in str(p) for p, _ in up.calls)

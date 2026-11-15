@@ -1,11 +1,13 @@
 """/ops: the owner's decision console (proposals, pools, channels, exceptions, redemption log).
 
 Everything under /ops/api needs the admin token. The page itself is static and holds no data."""
+import hashlib
 import hmac
 import json
 import time
 from pathlib import Path
 
+import httpx
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse
 from starlette.routing import Route
@@ -27,9 +29,35 @@ def ops_routes(core) -> list[Route]:
     def fail(status: int, code: str, message: str = "") -> JSONResponse:
         return JSONResponse({"ok": False, "error_code": code, "error_message": message or code}, status_code=status)
 
+    admins: dict[str, float] = {}         # sha256(Authorization) -> time Dujiao last accepted it
+    dj = httpx.Client(transport=core.transport, timeout=5) if cfg.dujiao_url else None
+
+    def dujiao_admin(auth: str) -> bool:
+        """A token the shop admin already holds opens the console: Dujiao itself says whether it is valid and
+        allowed to manage integrations. Accepted tokens are remembered for a minute."""
+        if dj is None or not auth.startswith("Bearer ") or len(auth) > 4096:
+            return False
+        key = hashlib.sha256(auth.encode()).hexdigest()
+        if time.time() - admins.get(key, 0) < 60:
+            return True
+        try:
+            r = dj.get(cfg.dujiao_url.rstrip("/") + "/api/v1/admin/site-connections",
+                       params={"page": 1, "page_size": 1}, headers={"Authorization": auth})
+            ok = r.status_code == 200 and r.json().get("status_code") == 0
+        except (httpx.HTTPError, ValueError):
+            ok = False
+        if ok:
+            if len(admins) > 1000:
+                admins.clear()
+            admins[key] = time.time()
+        else:
+            admins.pop(key, None)
+        return ok
+
     def guard(fn):
         async def endpoint(request: Request):
-            if not hmac.compare_digest(request.headers.get("x-admin-token", ""), cfg.admin_token):
+            if not (hmac.compare_digest(request.headers.get("x-admin-token", ""), cfg.admin_token)
+                    or dujiao_admin(request.headers.get("authorization", ""))):
                 return fail(401, "unauthorized")
             return await fn(request)
         return endpoint

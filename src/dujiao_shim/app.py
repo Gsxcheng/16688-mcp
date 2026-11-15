@@ -32,6 +32,7 @@ class Core:
 
     def __init__(self, cfg: Config, transport: httpx.BaseTransport | None = None):
         self.cfg = cfg
+        self.transport = transport
         self.store = Store(cfg.db_path)
         self.sup = Supplier16688(Client16688(cfg.app_id, cfg.secret, cfg.base_url, transport), cfg.live,
                                  cfg.min_balance)
