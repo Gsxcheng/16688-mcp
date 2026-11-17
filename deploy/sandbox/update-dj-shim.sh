@@ -3,8 +3,9 @@
 # Usage (on that machine, as a user who can talk to docker):
 #   bash update-dj-shim.sh /path/to/dujiao-shim-v0.1.tar.gz
 #
-# Keeps shim.env, volumes, the docker network and every other container.
-# Refuses to run unless the upstream host contains "mock16688" and formal purchase is off.
+# Keeps shim.env (it may only hold secrets), volumes, the docker network and every other container.
+# The running container's own environment is the upstream check. The host must be exactly mock16688.
+# LIVE=1 against that host is purchase mode "mock", not formal, and is not rolled back for that reason.
 # Never prints secret values. A failed health check puts the previous container back.
 set -euo pipefail
 
@@ -41,35 +42,31 @@ chmod 600 "$BACK/container.env"
 cp -a "$ENV_FILE" "$BACK/shim.env"
 chmod 600 "$BACK/shim.env"
 
-python3 - "$ENV_FILE" "$BACK/container.env" <<'PY'
+# Extract first so the preflight module is the one inside this package. The container is still running.
+STAGE=$(mktemp -d)
+trap 'rm -rf "$STAGE"' EXIT
+tar -xzf "$TARBALL" -C "$STAGE"
+if [[ ! -f "$STAGE/Dockerfile" && ! -f "$STAGE/pyproject.toml" ]]; then
+  inner=$(find "$STAGE" -mindepth 2 -maxdepth 2 -name Dockerfile -printf '%h\n' | head -n 1)
+  if [[ -z "$inner" ]]; then
+    echo "源码包里没有 Dockerfile，停止。容器还是原来的。" >&2
+    exit 2
+  fi
+  STAGE_SRC=$inner
+else
+  STAGE_SRC=$STAGE
+fi
+if [[ ! -f "$STAGE_SRC/deploy/sandbox/preflight.py" ]]; then
+  echo "源码包里没有 deploy/sandbox/preflight.py，停止。容器还是原来的。" >&2
+  exit 2
+fi
+
+python3 - "$ENV_FILE" "$BACK/container.env" "$STAGE_SRC" <<'PY'
 import sys
-from urllib.parse import urlparse
-
-def load(path):
-    out = {}
-    for line in open(path, encoding="utf-8", errors="replace"):
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        out[k] = v.strip().strip('"').strip("'")
-    return out
-
-file_env, run_env = load(sys.argv[1]), load(sys.argv[2])
-def host(env):
-    return (urlparse(env.get("OPEN16688_BASE_URL", "")).hostname or "").lower()
-
-file_host, run_host = host(file_env), host(run_env)
-if not file_host or not run_host:
-    sys.exit("停止：环境里没有 OPEN16688_BASE_URL。")
-if file_host != run_host:
-    sys.exit("停止：shim.env 和正在运行的容器上游主机不一致。没有改任何容器。")
-if "mock16688" not in file_host or file_host == "16688.com.cn" or file_host.endswith(".16688.com.cn"):
-    sys.exit(f"停止：上游主机不是 mock16688（看到的主机名是 {file_host}）。没有改任何容器。")
-for env in (file_env, run_env):
-    if env.get("SHIM_AUTHORIZE_FORMAL_PURCHASE", "").lower() in {"1", "true", "yes"}:
-        sys.exit("停止：SHIM_AUTHORIZE_FORMAL_PURCHASE 已打开。测试机不允许正式采购。")
-print(f"上游主机确认：{file_host}。正式采购开关关闭。")
+sys.path.insert(0, sys.argv[3] + "/deploy/sandbox")
+from preflight import confirm_test_upstream, load_env
+host = confirm_test_upstream(load_env(sys.argv[2]), load_env(sys.argv[1]))
+print(f"上游主机确认：{host}。正式采购开关关闭。shim.env 未修改。")
 PY
 
 # Remember everyone else so we can prove this script did not stop them.
@@ -91,21 +88,6 @@ PY
 OLD_IMAGE=$(docker inspect -f '{{.Image}}' "$CONTAINER")
 echo "$OLD_IMAGE" > "$BACK/image-id"
 docker tag "$IMAGE" "${IMAGE}-rollback-${STAMP}"
-
-STAGE=$(mktemp -d)
-trap 'rm -rf "$STAGE"' EXIT
-tar -xzf "$TARBALL" -C "$STAGE"
-# Archives created with git are wrapped in one directory; a raw tree is not.
-if [[ ! -f "$STAGE/Dockerfile" && ! -f "$STAGE/pyproject.toml" ]]; then
-  inner=$(find "$STAGE" -mindepth 2 -maxdepth 2 -name Dockerfile -printf '%h\n' | head -n 1)
-  if [[ -z "$inner" ]]; then
-    echo "源码包里没有 Dockerfile，停止。容器还是原来的。" >&2
-    exit 2
-  fi
-  STAGE_SRC=$inner
-else
-  STAGE_SRC=$STAGE
-fi
 
 python3 - "$STAGE_SRC" "$SRC" <<'PY'
 import shutil, sys
@@ -134,47 +116,16 @@ docker stop "$CONTAINER" >/dev/null
 docker rename "$CONTAINER" "${CONTAINER}-prev-${STAMP}"
 
 run_new() {
-  python3 - "$BACK/inspect.json" "$BACK/container.env" "$IMAGE" "$CONTAINER" "$STAMP" <<'PY'
+  python3 - "$BACK/inspect.json" "$BACK/container.env" "$IMAGE" "$CONTAINER" "$STAGE_SRC" <<'PY'
 import json, subprocess, sys
-inspect_path, env_path, image, name, stamp = sys.argv[1:]
-info = json.load(open(inspect_path))[0]
-hc = info["HostConfig"]
-args = ["docker", "run", "-d", "--name", name, "--env-file", env_path]
-restart = (hc.get("RestartPolicy") or {}).get("Name") or "unless-stopped"
-if restart and restart != "no":
-    args += ["--restart", restart]
-nets = list((info.get("NetworkSettings") or {}).get("Networks") or {})
-if nets:
-    args += ["--network", nets[0]]
-for mount in info.get("Mounts") or []:
-    if mount.get("Type") == "bind":
-        spec = f"{mount['Source']}:{mount['Destination']}"
-        if not mount.get("RW", True):
-            spec += ":ro"
-        args += ["-v", spec]
-    elif mount.get("Type") == "volume" and mount.get("Name"):
-        args += ["-v", f"{mount['Name']}:{mount['Destination']}"]
-if hc.get("ReadonlyRootfs"):
-    args.append("--read-only")
-for path, opts in (hc.get("Tmpfs") or {}).items():
-    args += ["--tmpfs", f"{path}:{opts}" if opts else path]
-if hc.get("Memory"):
-    args += ["--memory", str(hc["Memory"])]
-if hc.get("NanoCpus"):
-    args += ["--cpus", str(hc["NanoCpus"] / 1e9)]
-if hc.get("PidsLimit"):
-    args += ["--pids-limit", str(hc["PidsLimit"])]
-for cap in hc.get("CapDrop") or []:
-    args += ["--cap-drop", cap]
-for opt in hc.get("SecurityOpt") or []:
-    args += ["--security-opt", opt]
-# Loopback only. Do not reuse whatever the old container published.
-args += ["-p", "127.0.0.1:13360:3000", "-p", "127.0.0.1:13361:3001", image]
-cmd = info.get("Config", {}).get("Cmd") or ["dujiao-shim"]
-args += cmd
+sys.path.insert(0, sys.argv[5] + "/deploy/sandbox")
+from preflight import plan_run
+info = json.load(open(sys.argv[1]))[0]
+args = plan_run(info, sys.argv[2], sys.argv[3], sys.argv[4])
 subprocess.check_call(args)
+nets = list((info.get("NetworkSettings") or {}).get("Networks") or {})
 for extra in nets[1:]:
-    subprocess.check_call(["docker", "network", "connect", extra, name])
+    subprocess.check_call(["docker", "network", "connect", extra, sys.argv[4]])
 PY
 }
 
@@ -202,19 +153,22 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
 done
 [[ "$ok" == 1 ]] || rollback
 
-if ! python3 - "$BACK/container.env" <<'PY'
+if ! python3 - "$BACK/container.env" "$STAGE_SRC" <<'PY'
 import json, urllib.request, sys
+sys.path.insert(0, sys.argv[2] + "/deploy/sandbox")
+from preflight import mode_allows_keep
 token = ""
 for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
     if line.startswith("SHIM_ADMIN_TOKEN="):
-        token = line.split("=", 1)[1].strip()
+        token = line.split("=", 1)[1].strip().strip('"').strip("'")
 req = urllib.request.Request("http://127.0.0.1:13360/ops/api/overview",
                               headers={"x-admin-token": token})
 with urllib.request.urlopen(req, timeout=5) as r:
     body = json.load(r)
 mode = body.get("purchase_mode")
 print(f"采购模式：{mode}")
-if mode == "formal" or not body.get("ok"):
+# mock + SHIM_LIVE_PURCHASE=1 is "mock". Only an official host is "formal".
+if not body.get("ok") or not mode_allows_keep(mode):
     sys.exit(1)
 PY
 then
