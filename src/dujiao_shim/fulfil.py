@@ -87,6 +87,7 @@ class Fulfiller:
             self.store.update(oid, status="awaiting_approval")
             return None
         last = Refused("sku_unavailable", "no source available")
+        cheapest_fail = None
         trace: list[dict] = []
         pool = [s for s in product.sources if s.enabled]
         day_start = time.time() - time.time() % 86400
@@ -106,6 +107,9 @@ class Fulfiller:
                 q = self.sup.quote(src.goods_no, qty, src.max_unit_cost or product.max_unit_cost)
             except Refused as e:
                 last = e
+                total = e.quote.get("total")
+                if total is not None and (cheapest_fail is None or float(total) < cheapest_fail[0]):
+                    cheapest_fail = (float(total), e)
                 trace.append({"src": src.goods_no, "verdict": e.code, "type": "16688",
                               "total": e.quote.get("total"), "stock": e.quote.get("stock")})
                 continue
@@ -128,6 +132,8 @@ class Fulfiller:
                     break
         self.store.update(oid, trace=json.dumps(trace, ensure_ascii=False))
         if recommended is None:
+            if cheapest_fail is not None:
+                last = cheapest_fail[1]
             self.store.update(oid, status=on_fail, error=last.message, supplier="", supplier_ref="")
             if not quiet and (on_fail == "waiting_stock"
                               or last.code in ("insufficient_balance", "price_exceeded", "rate_limited")):
