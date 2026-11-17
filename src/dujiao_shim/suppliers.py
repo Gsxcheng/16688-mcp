@@ -1,6 +1,7 @@
-"""Supplier backends: the 16688 Open API (automatic) and a manual queue (Telegram sellers, anything without an API)."""
+"""Supplier backends: the 16688 Open API, a manual queue (Telegram sellers), and 链动小铺 (no API yet)."""
 import json
 import time
+from urllib.parse import urlparse
 
 import httpx
 
@@ -8,6 +9,14 @@ from open16688_mcp.sign import signed_body
 
 # 16688 purchase order statuses.
 PAID_PENDING, CLOSED, REFUNDED, SHIPPED, DONE = 1, 2, 3, 4, 5
+
+SIMULATED_MARK = "【模拟数据】未发生真实付款"
+
+
+def is_official_16688(base_url: str) -> bool:
+    """The public 16688 host. A test double such as mock16688 is not this host."""
+    host = (urlparse(base_url).hostname or "").lower().rstrip(".")
+    return host == "16688.com.cn" or host.endswith(".16688.com.cn")
 
 
 class Ambiguous(Exception):
@@ -45,10 +54,21 @@ class Client16688:
 class Supplier16688:
     """Quote -> guard rails -> purchase/create -> (poll purchase/query until shipped)."""
 
-    def __init__(self, client: Client16688, live: bool, min_balance: float):
+    def __init__(self, client: Client16688, live: bool, min_balance: float, authorize_formal: bool = False):
         self.client, self.live, self.min_balance = client, live, min_balance
+        self.authorize_formal = authorize_formal
         self._info_cache: dict[str, tuple[float, dict]] = {}
         self.last_quotes: dict[str, dict] = {}   # goods_no -> latest quote result, for the pool view
+
+    def purchase_mode(self) -> str:
+        """simulated = no purchase/create; mock = a non-official upstream; formal = official host and authorized;
+        formal_blocked = official host without the separate authorization."""
+        official = is_official_16688(self.client.base)
+        if official and not self.authorize_formal:
+            return "formal_blocked"
+        if not self.live:
+            return "simulated"
+        return "formal" if official else "mock"
 
     def info(self, goods_no: str, ttl: float = 60.0) -> dict | None:
         """Cached goods/detail (unit_price, available_quantity). None when unavailable."""
@@ -102,11 +122,16 @@ class Supplier16688:
         return d
 
     def buy(self, goods_no: str, quantity: int, remark: str, quoted: dict) -> dict:
-        """Spend money for an accepted quote. Raises Refused (safe to try the next source) or Ambiguous."""
+        """Spend money for an accepted quote. Raises Refused (safe to try the next source) or Ambiguous.
+
+        Official 16688 is refused unless SHIM_AUTHORIZE_FORMAL_PURCHASE is set. A non-official upstream
+        (the test double) is labeled simulated and is not a formal payment."""
         total = float(quoted["total_amount"])
+        if is_official_16688(self.client.base) and not self.authorize_formal:
+            raise Refused("formal_not_authorized", "正式 16688 采购未授权，已拒绝向官方接口付款")
         if not self.live:
             return {"trade_no": f"DRYRUN-{int(time.time())}", "status": SHIPPED, "total_amount": total,
-                    "cards": [{"code": "DRY-RUN-NOT-A-REAL-CARD"}], "dry_run": True}
+                    "cards": [{"code": "DRY-RUN-NOT-A-REAL-CARD"}], "dry_run": True, "simulated": True}
         try:
             res = self.client.call("/openApi/purchase/create",
                                    {"goods_no": goods_no, "quantity": quantity, "remark": remark[:500]})
@@ -115,7 +140,10 @@ class Supplier16688:
         if res.get("code") != 1:
             # code 0 is a definitive business failure according to the API contract.
             raise Refused("sku_unavailable", f"16688 refused the purchase: {res.get('msg', '')}")
-        return res["data"]
+        data = dict(res["data"])
+        if self.purchase_mode() != "formal":
+            data["simulated"] = True
+        return data
 
     def purchase(self, goods_no: str, quantity: int, max_unit_cost: float, remark: str) -> dict:
         return self.buy(goods_no, quantity, remark, self.quote(goods_no, quantity, max_unit_cost))

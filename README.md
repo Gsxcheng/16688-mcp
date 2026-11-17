@@ -50,19 +50,26 @@ MIT
 HMAC headers `Dujiao-Next-Api-Key/Timestamp/Signature`) so a Dujiao-Next shop can map products to it and buy
 automatically after a customer pays. Behind it:
 
-- **16688 source** – quote -> guard rails (max unit cost, wallet floor, daily cap) -> `purchase/create` -> poll
-  `purchase/query` until shipped. Orders are written to SQLite *before* the purchase call; a timeout or crash
-  during `purchase/create` parks the order as `needs_review` and is never retried automatically.
-- **manual source** – for suppliers without an API (e.g. Telegram sellers): the order waits in a queue, a Feishu
-  notification is sent, and `/admin` (token protected) lets the operator paste the delivery content.
-- `SHIM_LIVE_PURCHASE` must be `1` for real purchases; otherwise the quote is real but a fake card is delivered.
+- **16688 source** – quote, then a purchase proposal. `purchase/create` runs only after the owner approves that
+  proposal in `/ops`. Guard rails still apply (max unit cost, wallet floor, daily cap). Orders are written to
+  SQLite *before* any purchase call; a timeout or crash during `purchase/create` parks the order as `needs_review`
+  and is never retried automatically.
+- **manual source** – Telegram and other suppliers without an API. Approving the proposal moves the order into the
+  queue. Nothing is paid automatically. `/ops` (and `/admin`) accept a pasted delivery only after login.
+- **链动小铺** – shown as not configured. There is no client and no request until an API document exists.
+- `SHIM_LIVE_PURCHASE=1` allows `purchase/create` against a non-official upstream (the test double). It does **not**
+  authorize the official 16688 host. That needs a second flag, `SHIM_AUTHORIZE_FORMAL_PURCHASE=1`, which stays unset
+  on the test machine. Results from a non-official upstream are marked `【模拟数据】`.
 
-Each product has a **source pool**: every enabled 16688 source is quoted, the cheapest one that has stock and is
-under the ceiling is bought (`rule: "order"` keeps list order), and the comparison is stored with the order.
-`mode: "redeem"` products do not buy when sold: they hand out our own codes (`GG-…`), and the purchase happens when
-the buyer redeems one on the public redeem page. `/ops` is the owner console (pools, 16688 channel, exceptions,
-purchase log, codes, proposals). The redeem page is served by a second listener (`PUBLIC_PORT`, default 3001) that
-exposes nothing else.
+Each product has a **source pool**: every enabled 16688 source is quoted, the comparison is stored, and the owner
+approves or rejects before anything is executed (`rule: "order"` keeps list order instead of cheapest-first).
+`mode: "redeem"` products do not buy when sold: they hand out our own codes (`GG-…`). Redeeming one opens a
+proposal; the purchase runs only after approval. `/ops` is the owner console. Its HTML is a login wall until the
+admin token sets an HttpOnly cookie; a Dujiao admin bearer still opens `/ops/api` when `SHIM_DUJIAO_URL` is set.
+The redeem page is a second listener (`PUBLIC_PORT`, default 3001) that exposes nothing else.
+
+The test-machine swap lives in `deploy/sandbox/`. It only replaces the `dj-shim` container, keeps the existing
+volume, network and `shim.env`, and refuses to run unless the upstream host is `mock16688`.
 
 Run: `dujiao-shim` (env: `SHIM_API_KEY`, `SHIM_API_SECRET`, `SHIM_ADMIN_TOKEN`, `SHIM_CATALOG`, `SHIM_DB`,
 `OPEN16688_APP_ID/SECRET`, optional `SHIM_CALLBACK_URL`, `SHIM_FEISHU_WEBHOOK`, `SHIM_MIN_BALANCE`,

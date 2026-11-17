@@ -8,7 +8,8 @@
     "sources": [
       {"type": "16688", "goods_no": "G24324524"},
       {"type": "16688", "goods_no": "G61972301"},
-      {"type": "manual", "label": "TG 人工采购", "stock": 0, "note": "库存填 0 表示不启用兜底"}
+      {"type": "manual", "label": "TG 人工采购", "stock": 0, "note": "库存填 0 表示不启用兜底"},
+      {"type": "liandong", "label": "链动小铺", "enabled": false, "note": "等待 API 文档，未配置，不会询价或付款"}
     ]
   }
 ]

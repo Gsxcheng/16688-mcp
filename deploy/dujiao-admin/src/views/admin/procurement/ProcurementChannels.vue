@@ -38,7 +38,7 @@ onMounted(() => load())
   <div class="space-y-6">
     <div>
       <h1 class="text-2xl font-semibold">货源渠道</h1>
-      <p class="mt-1 text-sm text-muted-foreground">货源从哪里看、去哪里买。现在有两个渠道。</p>
+      <p class="mt-1 text-sm text-muted-foreground">货源从哪里看、去哪里买。16688 和人工要先拍板，链动小铺还没有接口。</p>
     </div>
 
     <div class="rounded-xl border border-border bg-card">
@@ -48,7 +48,7 @@ onMounted(() => load())
           <span
             class="inline-flex rounded-full border px-2 py-0.5 text-xs"
             :class="configured ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'"
-          >{{ configured ? '已接通，全自动' : '未配置接口凭据' }}</span>
+          >{{ configured ? '已接通，下单前要拍板' : '未配置接口凭据' }}</span>
         </div>
         <div class="flex items-center gap-2">
           <Input v-model="keyword" class="h-9 w-48" placeholder="搜名称或编号" />
@@ -58,7 +58,7 @@ onMounted(() => load())
       <div class="grid grid-cols-1 gap-3 px-6 py-4 md:grid-cols-3">
         <div class="rounded-lg bg-muted/40 px-3 py-2 text-sm"><div class="text-xs text-muted-foreground">去哪里看货</div>接口读取已代理的货源；新货源要先在 16688 网页上点「代理」</div>
         <div class="rounded-lg bg-muted/40 px-3 py-2 text-sm"><div class="text-xs text-muted-foreground">怎么查价</div>询价接口实时返回货款、手续费和库存</div>
-        <div class="rounded-lg bg-muted/40 px-3 py-2 text-sm"><div class="text-xs text-muted-foreground">怎么采购</div>下单接口，从 16688 运营钱包扣款</div>
+        <div class="rounded-lg bg-muted/40 px-3 py-2 text-sm"><div class="text-xs text-muted-foreground">怎么采购</div>先出提案，同意后才下单。测试上游的结果标为模拟数据，不会向正式 16688 付款</div>
       </div>
       <div class="overflow-x-auto border-t border-border">
         <Table class="min-w-[760px]">
@@ -95,10 +95,18 @@ onMounted(() => load())
 
     <div class="rounded-xl border border-border bg-card px-6 py-4">
       <div class="flex items-center gap-2">
-        <span class="font-medium">人工渠道（Telegram 群等）</span>
-        <span class="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs text-amber-700">采购靠你</span>
+        <span class="font-medium">链动小铺</span>
+        <span class="inline-flex rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground">未配置</span>
       </div>
-      <p class="mt-2 text-sm text-muted-foreground">没有接口的货源，在货源池里加一条「人工来源」，填名称和可售数量。自动渠道都买不到时，订单转到「异常与人工」，你买好后把卡密粘贴进去交付。</p>
+      <p class="mt-2 text-sm text-muted-foreground">还没有 API 文档，所以没有客户端，也不会询价或付款。货源池里只能放占位。</p>
+    </div>
+
+    <div class="rounded-xl border border-border bg-card px-6 py-4">
+      <div class="flex items-center gap-2">
+        <span class="font-medium">人工渠道（Telegram 群等）</span>
+        <span class="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs text-amber-700">不自动付款</span>
+      </div>
+      <p class="mt-2 text-sm text-muted-foreground">没有接口的货源，在货源池里加一条「人工来源」，填名称和可售数量。提案同意后订单转到「异常与人工」，你自己付款，再把卡密粘贴进去交付。</p>
     </div>
   </div>
 </template>

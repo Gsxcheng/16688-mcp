@@ -29,7 +29,7 @@ const margin = (p: Proposal) => (p.price && p.cost ? yuan(p.price - p.cost) : '�
 
 const decide = async (p: Proposal, action: 'approve' | 'reject') => {
   if (action === 'approve') {
-    const what = p.type === 'new_product' ? `新增商品「${p.title}」，加入货源池` : `执行「${p.title}」`
+    const what = p.type === 'new_product' ? `新增商品「${p.title}」，加入货源池` : p.type === 'purchase' ? `执行采购「${p.title}」。拒绝则不付款` : `执行「${p.title}」`
     const ok = await confirmAction({ title: '同意这条提案？', description: `${what}。之后可以在「货源池」里随时改。` })
     if (!ok) return
   }
@@ -73,7 +73,7 @@ onMounted(load)
           <span
             class="inline-flex rounded-full border px-2 py-0.5 text-xs"
             :class="p.type === 'new_product' ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-amber-200 bg-amber-50 text-amber-700'"
-          >{{ p.type === 'new_product' ? '新增商品' : '移出货源' }}</span>
+          >{{ p.type === 'new_product' ? '新增商品' : p.type === 'purchase' ? '采购提案' : '移出货源' }}</span>
           <span v-if="p.mode" class="inline-flex rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground">
             {{ p.mode === 'redeem' ? '兑换模式' : '直发模式' }}
           </span>
