@@ -29,7 +29,7 @@ class Upstream:
 
     def __call__(self, req: httpx.Request) -> httpx.Response:
         url = str(req.url)
-        if url.startswith("https://www.16688.com.cn/openApi/"):
+        if "/openApi/" in url:
             path = req.url.path
             body = json.loads(req.content)
             self.calls.append((path, body))
@@ -59,11 +59,24 @@ class Upstream:
         return sum(1 for p, _ in self.calls if p.endswith(suffix))
 
 
-def make(tmp_path, up, live=True, sources=None, db="s.db", **over):
+H = {"x-admin-token": ADMIN}
+
+
+def approve(c):
+    props = c.get("/ops/api/proposals", headers=H).json()["proposals"]
+    openp = [p for p in props if p["status"] == "open" and p["type"] == "purchase"]
+    assert len(openp) == 1, openp
+    r = c.post(f"/ops/api/proposals/{openp[0]['id']}/approve", headers=H)
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def make(tmp_path, up, live=True, sources=None, db="s.db", base_url="http://mock16688", **over):
     prod = Product(id=1, sku_id=101, slug="g6", title="Gemini 6M", description="d", cost=8.22,
                    sources=sources if sources is not None else [Source("16688", goods_no="G1", max_unit_cost=9.0)])
     cfg = Config(api_key=KEY, api_secret=SECRET, admin_token=ADMIN, db_path=str(tmp_path / db),
-                 products=[prod], app_id="app", secret="sec", live=live, callback_url=DUJIAO_CB, **over)
+                 products=[prod], app_id="app", secret="sec", base_url=base_url, live=live,
+                 callback_url=DUJIAO_CB, **over)
     app = build_app(cfg, transport=httpx.MockTransport(up), start_worker=False)
     return app, TestClient(app)
 
@@ -133,17 +146,19 @@ def test_stock_falls_back_to_manual_source(tmp_path, up):
 def test_live_order_delivers_and_calls_back(tmp_path, up):
     app, c = make(tmp_path, up)
     r = order(c)
-    assert r["ok"] and r["status"] == "paid" and r["amount"] == "8.22"
+    assert r["ok"] and r["status"] == "paid" and up.n("purchase/create") == 0
+    approve(c)
     assert up.n("purchase/create") == 1
     create_body = [b for p, b in up.calls if p.endswith("purchase/create")][0]
     assert create_body["goods_no"] == "G1" and create_body["quantity"] == 1 and r["order_no"] in create_body["remark"]
     got = call(c, "GET", f"/api/v1/upstream/orders/{r['order_id']}").json()
-    assert got["status"] == "delivered" and "AAAA-BBBB" in got["fulfillment"]["payload"]
+    assert got["status"] == "delivered" and got["amount"] == "8.22"
+    assert "AAAA-BBBB" in got["fulfillment"]["payload"] and "【模拟数据】" in got["fulfillment"]["payload"]
     assert "use it" in got["fulfillment"]["payload"]
     app.state.fulfiller.tick()
     cb = [b for p, b in up.calls if p == "callback"][0]
     assert cb["downstream_order_no"] == "D1" and cb["status"] == "delivered"
-    assert cb["fulfillment"]["payload"].startswith("AAAA-BBBB")
+    assert "AAAA-BBBB" in cb["fulfillment"]["payload"]
     ts = up.cb_headers["dujiao-next-timestamp"]
     assert up.cb_headers["dujiao-next-signature"] == auth.signature(SECRET, "POST", "/api/v1/upstream/callback", ts, up.cb_body)
     app.state.fulfiller.tick(time.time() + 1000)
@@ -153,15 +168,19 @@ def test_live_order_delivers_and_calls_back(tmp_path, up):
 def test_replay_is_idempotent(tmp_path, up):
     _, c = make(tmp_path, up)
     a, b = order(c), order(c)
-    assert a["order_id"] == b["order_id"] and up.n("purchase/create") == 1
+    assert a["order_id"] == b["order_id"] and up.n("purchase/create") == 0
+    approve(c)
+    assert order(c)["order_id"] == a["order_id"] and up.n("purchase/create") == 1
 
 
 def test_dry_run_never_calls_create(tmp_path, up):
     app, c = make(tmp_path, up, live=False)
     r = order(c)
     assert r["ok"] and up.n("purchase/create") == 0 and up.n("quotePrice") == 1
+    approve(c)
+    assert up.n("purchase/create") == 0
     got = call(c, "GET", f"/api/v1/upstream/orders/{r['order_id']}").json()
-    assert "DRY-RUN" in got["fulfillment"]["payload"]
+    assert "DRY-RUN" in got["fulfillment"]["payload"] and "【模拟数据】" in got["fulfillment"]["payload"]
     assert any("模拟模式" in m for m in app.state.notifier.sent)
 
 
@@ -173,7 +192,9 @@ def test_price_above_ceiling_is_refused_then_retry_allowed(tmp_path, up):
     assert any("被拒绝" in m for m in app.state.notifier.sent)
     up.quote["total_amount"] = 8.22
     r2 = order(c)  # same downstream_order_no: Dujiao retry after the price came back down
-    assert r2["ok"] and r2["order_id"] == r["order_id"] and up.n("purchase/create") == 1
+    assert r2["ok"] and r2["order_id"] == r["order_id"] and up.n("purchase/create") == 0
+    approve(c)
+    assert up.n("purchase/create") == 1
 
 
 def test_low_balance_refuses_and_floor_applies(tmp_path, up):
@@ -205,7 +226,8 @@ def test_timeout_during_create_stops_and_never_retries(tmp_path, up):
     app, c = make(tmp_path, up, sources=[Source("16688", goods_no="G1", max_unit_cost=9.0),
                                          Source("manual", label="TG", stock=5)])
     r = order(c)
-    assert r["ok"] and r["status"] == "paid"          # Dujiao keeps waiting, nothing is delivered
+    assert r["ok"] and r["status"] == "paid" and up.n("purchase/create") == 0
+    approve(c)                                 # the approval is what tries to pay; the timeout stops it
     row = app.state.store.get(r["order_id"])
     assert row["status"] == "needs_review" and row["supplier"] == "16688"
     assert any("不确定" in m for m in app.state.notifier.sent)
@@ -218,6 +240,7 @@ def test_pending_purchase_is_polled_until_shipped(tmp_path, up):
     up.create_status = 1
     app, c = make(tmp_path, up)
     r = order(c)
+    approve(c)
     assert app.state.store.get(r["order_id"])["status"] == "processing"
     up.query_status = 1
     app.state.fulfiller.tick()
@@ -231,6 +254,7 @@ def test_closed_purchase_cancels_downstream(tmp_path, up):
     up.create_status = 1
     app, c = make(tmp_path, up)
     r = order(c)
+    approve(c)
     up.query_status = 2
     app.state.fulfiller.tick()
     assert call(c, "GET", f"/api/v1/upstream/orders/{r['order_id']}").json()["status"] == "canceled"
@@ -261,6 +285,7 @@ def test_bad_requests(tmp_path, up):
 def test_cancel_rules(tmp_path, up):
     app, c = make(tmp_path, up)
     done = order(c)
+    approve(c)
     assert call(c, "POST", f"/api/v1/upstream/orders/{done['order_id']}/cancel").status_code == 409
     row = app.state.store.create(101, 1, 1, "M1", "")
     app.state.store.update(row["id"], status="awaiting_manual")
@@ -272,6 +297,7 @@ def test_failed_callback_backs_off_then_gives_up(tmp_path, up):
     up.callback_ok = False
     app, c = make(tmp_path, up)
     r = order(c)
+    approve(c)
     now = time.time()
     for i in range(CALLBACK_MAX_ATTEMPTS):
         app.state.fulfiller.tick(now + i * 4000)
@@ -292,6 +318,7 @@ def test_manual_order_admin_flow(tmp_path, up):
     app, c = make(tmp_path, up, sources=[Source("manual", label="TG-Paglu", stock=5)])
     r = order(c)
     assert r["ok"] and up.n("purchase/create") == 0
+    approve(c)
     h = {"x-admin-token": ADMIN}
     assert c.get("/admin/api/pending").status_code == 401
     pend = c.get("/admin/api/pending", headers=h).json()["orders"]
@@ -328,7 +355,8 @@ def test_health_and_catalog_loader(tmp_path, up):
     assert load_products(str(f))[0].sources[0].goods_no == "G1"
     env = {"SHIM_API_KEY": "k" * 8, "SHIM_API_SECRET": "s" * 32, "SHIM_ADMIN_TOKEN": "t" * 32,
            "SHIM_CATALOG": str(f), "SHIM_DB": str(tmp_path / "e.db"), "SHIM_LIVE_PURCHASE": "1"}
-    assert from_env(env).live is True
+    assert from_env(env).live is True and from_env(env).authorize_formal is False
+    assert from_env({**env, "SHIM_AUTHORIZE_FORMAL_PURCHASE": "1"}).authorize_formal is True
     with pytest.raises(SystemExit):
         from_env({**env, "SHIM_API_SECRET": "short"})
     f.write_text(json.dumps([{"id": 1, "sku_id": 1, "slug": "a", "title": "", "description": "", "cost": 1},
@@ -349,6 +377,18 @@ def test_installer_default_api_key_passes_startup_validation(tmp_path):
            "SHIM_CATALOG": str(catalog), "SHIM_DB": str(tmp_path / "x.db")}
     assert from_env(env).api_key == key
     assert key in script.split("API Key：")[1].split("\n")[0]
+
+
+def test_official_16688_is_not_paid_without_a_separate_authorization(tmp_path, up):
+    """LIVE=1 against the real host still must not call purchase/create."""
+    app, c = make(tmp_path, up, base_url="https://www.16688.com.cn")
+    r = order(c)
+    assert r["ok"] and up.n("purchase/create") == 0
+    approve(c)
+    row = app.state.store.get(r["order_id"])
+    assert up.n("purchase/create") == 0 and row["status"] == "needs_review"
+    assert "未授权" in row["error"]
+    assert c.get("/ops/api/overview", headers=H).json()["purchase_mode"] == "formal_blocked"
 
 
 def test_products_advertise_currency(tmp_path, up):

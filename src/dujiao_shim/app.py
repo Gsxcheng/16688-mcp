@@ -13,7 +13,7 @@ from starlette.routing import Route
 from . import auth
 from .config import Config, Product, from_env
 from .fulfil import Fulfiller, Notifier, dujiao_status, fulfillment
-from .ops import ops_routes
+from .ops import has_ops_session, login_page, ops_routes
 from .public import build_public_app
 from .redeem import Redeemer
 from .store import OPEN_STATES, Store
@@ -35,7 +35,7 @@ class Core:
         self.transport = transport
         self.store = Store(cfg.db_path)
         self.sup = Supplier16688(Client16688(cfg.app_id, cfg.secret, cfg.base_url, transport), cfg.live,
-                                 cfg.min_balance)
+                                 cfg.min_balance, cfg.authorize_formal)
         self.notify = Notifier(cfg.feishu_webhook, cfg.notify_prefix, transport)
         self.ful = Fulfiller(cfg, self.store, self.sup, self.notify, transport)
         self.redeemer = Redeemer(cfg, self.store, self.ful)
@@ -52,7 +52,7 @@ def build_app(cfg: Config, transport: httpx.BaseTransport | None = None, start_w
     def stock_of(p: Product) -> int:
         """Advertised stock: the first enabled pool member that can sell right now."""
         for s in p.sources:
-            if not s.enabled:
+            if not s.enabled or s.type == "liandong":
                 continue
             if s.type == "16688":
                 info = sup.info(s.goods_no)
@@ -172,17 +172,23 @@ def build_app(cfg: Config, transport: httpx.BaseTransport | None = None, start_w
             return fail(404, "order_not_found")
         if row["status"] in ("canceled", "rejected"):
             return JSONResponse({"ok": True, "status": "canceled"})
-        if row["status"] != "awaiting_manual":
+        if row["status"] not in ("awaiting_manual", "awaiting_approval"):
             return fail(409, "cancel_not_allowed", "already purchased or in progress at the supplier")
-        store.update(row["id"], status="canceled", error="canceled by Dujiao")
+        if row["status"] == "awaiting_approval":
+            _reject_open_purchase(store, row["order_no"])
+        store.update(row["id"], status="canceled", supplier="", error="canceled by Dujiao")
         return JSONResponse({"ok": True, "status": "canceled"})
 
     # ---- admin: manual orders -------------------------------------------------------------------
     def admin_ok(request: Request) -> bool:
-        return hmac.compare_digest(request.headers.get("x-admin-token", ""), cfg.admin_token)
+        got = request.headers.get("x-admin-token", "")
+        header_ok = len(got) == len(cfg.admin_token) and hmac.compare_digest(got, cfg.admin_token)
+        return header_ok or has_ops_session(request, cfg.admin_token)
 
     async def admin_page(request: Request):
-        return HTMLResponse(ADMIN_HTML)
+        if not has_ops_session(request, cfg.admin_token):
+            return login_page()
+        return HTMLResponse(ADMIN_HTML, headers={"Cache-Control": "no-store"})
 
     async def admin_pending(request: Request):
         if not admin_ok(request):
@@ -240,17 +246,26 @@ ADMIN_HTML = """<!doctype html><meta charset=utf-8><meta name=viewport content="
 <title>人工采购队列</title><style>body{font:15px system-ui;max-width:720px;margin:16px auto;padding:0 16px}
 .o{border:1px solid #ccc;border-radius:8px;padding:12px;margin:12px 0}textarea{width:100%;height:80px}
 button{margin-right:8px;padding:6px 12px}</style>
-<h2>人工采购队列</h2><input id=t type=password placeholder="管理令牌" size=40> <button onclick=load()>刷新</button>
+<h2>人工采购队列</h2><p>不会自动付款。买好后把交付内容粘贴进来。模拟内容请标明【模拟数据】。</p>
+<button onclick=load()>刷新</button>
 <div id=l></div><script>
-const q=s=>document.querySelector(s);q('#t').value=sessionStorage.getItem('t')||'';
-async function api(p,b){const r=await fetch(p,{method:b?'POST':'GET',headers:{'x-admin-token':q('#t').value,'content-type':'application/json'},body:b?JSON.stringify(b):undefined});return r.json()}
-async function load(){sessionStorage.setItem('t',q('#t').value);const d=await api('/admin/api/pending');
+const q=s=>document.querySelector(s);
+async function api(p,b){const r=await fetch(p,{method:b?'POST':'GET',credentials:'same-origin',headers:{'content-type':'application/json'},body:b?JSON.stringify(b):undefined});
+ if(r.status===401){location.replace('/admin');throw new Error('unauthorized')}return r.json()}
+async function load(){const d=await api('/admin/api/pending');
 q('#l').innerHTML=d.orders?d.orders.map(o=>`<div class=o><b>${o.order_no}</b> ${o.product} ×${o.quantity}<br>来源：${o.source||'-'} ｜ 状态：${o.status} ｜ ${o.created_at}
 <br>${o.error||''}<textarea id="p-${o.order_no}" placeholder="粘贴交付内容（卡密等）"></textarea>
-<button onclick="act('deliver','${o.order_no}')">交付</button><button onclick="act('cancel','${o.order_no}')">取消</button></div>`).join('')||'没有待处理订单':'令牌错误'}
+<button onclick="act('deliver','${o.order_no}')">交付</button><button onclick="act('cancel','${o.order_no}')">取消</button></div>`).join('')||'没有待处理订单':'需要重新登录'}
 async function act(a,n){const p=q('#p-'+n).value;if(a=='cancel'&&!confirm('取消订单？'))return;
 const r=await api('/admin/api/'+a,{order_no:n,payload:p});alert(r.ok?'完成':(r.error_message||'失败'));load()}
+load();
 </script>"""
+
+
+def _reject_open_purchase(store: Store, order_no: str) -> None:
+    row = store.open_purchase_for(order_no)
+    if row is not None:
+        store.decide_proposal(row["id"], "rejected")
 
 
 def build_from_env():

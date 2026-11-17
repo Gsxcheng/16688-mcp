@@ -63,7 +63,8 @@ docker run -d --name dujiao-shim --restart unless-stopped --env-file .env -e SHI
 sleep 4
 docker ps --filter name=dujiao-shim --format '{{.Names}}  {{.Status}}  {{.Ports}}'
 echo -n "健康检查： "; curl -s http://127.0.0.1:$PORT/health; echo
-if grep -q '^SHIM_LIVE_PURCHASE=1' .env; then echo "模式：真实采购（会扣 16688 运营钱包）"; else echo "模式：模拟（不会真实下单）"; fi
+if grep -q '^SHIM_LIVE_PURCHASE=1' .env; then echo "模式：SHIM_LIVE_PURCHASE=1。正式 16688 仍要另设 SHIM_AUTHORIZE_FORMAL_PURCHASE=1 才会付款；测试上游只算模拟。"; else echo "模式：模拟（不会调用下单接口）"; fi
+echo "下单前要在 /ops 同意提案。链动小铺没有接口，保持未配置。"
 
 cat <<NEXT
 

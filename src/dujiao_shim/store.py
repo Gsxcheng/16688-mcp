@@ -1,4 +1,5 @@
 """SQLite order ledger. Order rows are written BEFORE any money moves so a crash can never double-buy."""
+import json
 import sqlite3
 import threading
 import time
@@ -11,7 +12,7 @@ CREATE TABLE IF NOT EXISTS orders (
   sku_id INTEGER NOT NULL,
   product_id INTEGER NOT NULL,
   quantity INTEGER NOT NULL,
-  status TEXT NOT NULL,            -- processing | awaiting_manual | needs_review | delivered | canceled | rejected
+  status TEXT NOT NULL,            -- processing | awaiting_approval | awaiting_manual | needs_review | delivered | canceled | rejected
   supplier TEXT NOT NULL DEFAULT '',
   supplier_ref TEXT NOT NULL DEFAULT '',   -- 16688 trade_no
   amount TEXT NOT NULL DEFAULT '0.00',
@@ -50,7 +51,7 @@ CREATE TABLE IF NOT EXISTS proposals (
 
 # 'rejected' = refused before any money moved; Dujiao may retry the same downstream_order_no.
 # 'waiting_stock' = a redemption no source could serve; nothing was charged and it is retried automatically.
-OPEN_STATES = ("processing", "awaiting_manual", "needs_review", "waiting_stock")
+OPEN_STATES = ("processing", "awaiting_approval", "awaiting_manual", "needs_review", "waiting_stock")
 
 
 class Store:
@@ -173,6 +174,14 @@ class Store:
 
     def proposal(self, pid: int):
         return self._one("SELECT * FROM proposals WHERE id=?", (pid,))
+
+    def open_purchase_for(self, order_no: str):
+        """The open purchase proposal for one order, if the owner has not decided it yet."""
+        for row in self.proposals("open"):
+            body = json.loads(row["body"])
+            if body.get("type") == "purchase" and body.get("order_no") == order_no:
+                return row
+        return None
 
     def decide_proposal(self, pid: int, status: str) -> bool:
         cur = self._run("UPDATE proposals SET status=?, decided_at=? WHERE id=? AND status='open'",

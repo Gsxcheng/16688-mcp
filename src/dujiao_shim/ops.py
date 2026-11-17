@@ -1,6 +1,7 @@
 """/ops: the owner's decision console (proposals, pools, channels, exceptions, redemption log).
 
-Everything under /ops/api needs the admin token. The page itself is static and holds no data."""
+The console HTML is served only after a session cookie. /ops/api accepts that cookie or the admin token
+or a Dujiao admin bearer. Nothing here calls purchase/create; approving a purchase proposal does."""
 import hashlib
 import hmac
 import json
@@ -15,7 +16,47 @@ from starlette.routing import Route
 from .config import Product, Source, save_products
 from .store import OPEN_STATES
 
-FEE_HINT = "总价含 16688 手续费"
+FEE_HINT = "总价含 16688 手续费。同意采购提案后才会执行；拒绝或未拍板都不会付款。"
+COOKIE = "ops_session"
+_SESSION_TAG = b"dujiao-shim-ops-v1"
+
+
+def ops_session(admin_token: str) -> str:
+    return hmac.new(admin_token.encode(), _SESSION_TAG, hashlib.sha256).hexdigest()
+
+
+def has_ops_session(request: Request, admin_token: str) -> bool:
+    got = request.cookies.get(COOKIE, "")
+    expect = ops_session(admin_token)
+    return len(got) == len(expect) and hmac.compare_digest(got, expect)
+
+
+def login_page() -> HTMLResponse:
+    return HTMLResponse(LOGIN_HTML, headers={"Cache-Control": "no-store", "X-Frame-Options": "DENY"})
+
+
+LOGIN_HTML = """<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>采购决策登录</title><style>
+:root{--bg:#f3f5f4;--surface:#fff;--line:#d5dbd8;--fg:#17231f;--muted:#5b6964;--accent:#0c6f5e;--on:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#111816;--surface:#1a2320;--line:#34413c;--fg:#e6edea;--muted:#9aa9a3;
+--accent:#4fc3a9;--on:#06211b;color-scheme:dark}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);
+font:15px/1.6 "PingFang SC","Microsoft YaHei",system-ui,sans-serif}
+main{max-width:420px;margin:64px auto;padding:0 16px}form{background:var(--surface);border:1px solid var(--line);
+border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:12px}
+h1{font-size:18px;margin:0}p{margin:0;color:var(--muted);font-size:13px}
+input{font:15px inherit;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
+button{font:inherit;font-weight:600;cursor:pointer;border:0;border-radius:8px;background:var(--accent);color:var(--on);padding:10px}
+.err{color:#b3261e;min-height:1.2em}
+</style></head><body><main><form id="f"><h1>采购决策</h1>
+<p>管理入口。请输入本机已配置的管理令牌。令牌不会写进页面，登录后只留下一个 HttpOnly 会话。</p>
+<label for="tok">管理令牌</label><input id="tok" type="password" autocomplete="current-password" required>
+<button type="submit">进入</button><p class="err" id="err"></p></form></main><script>
+document.getElementById('f').onsubmit=async(e)=>{e.preventDefault();const err=document.getElementById('err');err.textContent='';
+ const r=await fetch('/ops/login',{method:'POST',headers:{'content-type':'application/json'},
+  body:JSON.stringify({token:document.getElementById('tok').value})});
+ if(r.ok){location.reload();return}err.textContent=r.status===429?'尝试太频繁，请稍后再来。':'令牌不对。'};
+</script></body></html>"""
 
 
 def _ts(t: float | None) -> str:
@@ -54,9 +95,15 @@ def ops_routes(core) -> list[Route]:
             admins.pop(key, None)
         return ok
 
+    login_fails: dict[str, list[float]] = {}
+
+    def token_ok(request: Request) -> bool:
+        got = request.headers.get("x-admin-token", "")
+        return len(got) == len(cfg.admin_token) and hmac.compare_digest(got, cfg.admin_token)
+
     def guard(fn):
         async def endpoint(request: Request):
-            if not (hmac.compare_digest(request.headers.get("x-admin-token", ""), cfg.admin_token)
+            if not (token_ok(request) or has_ops_session(request, cfg.admin_token)
                     or dujiao_admin(request.headers.get("authorization", ""))):
                 return fail(401, "unauthorized")
             return await fn(request)
@@ -90,7 +137,31 @@ def ops_routes(core) -> list[Route]:
                 "trace": json.loads(r["trace"]) if r["trace"] else []}
 
     async def page(request: Request):
-        return HTMLResponse(OPS_HTML, headers={"Cache-Control": "no-store"})
+        if not has_ops_session(request, cfg.admin_token):
+            return login_page()
+        return HTMLResponse(OPS_HTML, headers={"Cache-Control": "no-store", "X-Frame-Options": "DENY"})
+
+    async def login(request: Request):
+        ip = request.headers.get("cf-connecting-ip") or (request.client.host if request.client else "?")
+        now = time.time()
+        recent = [t for t in login_fails.get(ip, []) if now - t < 60]
+        if len(recent) >= 8:
+            return fail(429, "rate_limited", "尝试太频繁，请稍后再来")
+        try:
+            token = str((await request.json()).get("token", ""))
+        except (ValueError, AttributeError):
+            token = ""
+        if len(token) != len(cfg.admin_token) or not hmac.compare_digest(token, cfg.admin_token):
+            recent.append(now)
+            login_fails[ip] = recent
+            if len(login_fails) > 5000:
+                login_fails.clear()
+            return fail(401, "unauthorized")
+        login_fails.pop(ip, None)
+        resp = JSONResponse({"ok": True})
+        resp.set_cookie(COOKIE, ops_session(cfg.admin_token), httponly=True, samesite="strict", path="/",
+                        max_age=12 * 3600)
+        return resp
 
     @guard
     async def overview(request: Request):
@@ -99,7 +170,9 @@ def ops_routes(core) -> list[Route]:
             hit = (time.time(), sup.balance() if sup.client.configured else None)
             cache["balance"] = hit
         day_start = time.time() - time.time() % 86400
-        return JSONResponse({"ok": True, "live": cfg.live, "wallet": hit[1], "min_balance": cfg.min_balance,
+        return JSONResponse({"ok": True, "live": cfg.live, "purchase_mode": sup.purchase_mode(),
+                             "formal_authorized": cfg.authorize_formal,
+                             "wallet": hit[1], "min_balance": cfg.min_balance,
                              "orders_today": store.orders_today(day_start), "max_orders": cfg.max_orders_per_day,
                              "unredeemed": store.count_unredeemed(), "open_proposals": len(store.proposals("open")),
                              "exceptions": len(store.pending_manual()), "redeem_url": cfg.redeem_url})
@@ -119,8 +192,8 @@ def ops_routes(core) -> list[Route]:
         if "sources" in d:
             srcs = []
             for s in d["sources"]:
-                if s.get("type") not in ("16688", "manual"):
-                    raise ValueError("source type must be 16688 or manual")
+                if s.get("type") not in ("16688", "manual", "liandong"):
+                    raise ValueError("source type must be 16688, manual or liandong")
                 srcs.append(Source(type=s["type"], goods_no=str(s.get("goods_no", "")),
                                    max_unit_cost=float(s.get("max_unit_cost") or 0), label=str(s.get("label", "")),
                                    stock=int(s.get("stock") or 0), note=str(s.get("note", "")),
@@ -164,7 +237,10 @@ def ops_routes(core) -> list[Route]:
             cache["goods"] = hit
         used = {s.goods_no: p.title for p in cfg.products for s in p.sources if s.type == "16688"}
         return JSONResponse({"ok": True, "configured": sup.client.configured, "at": _ts(hit[0]),
-                             "goods": [{**g, "in_pool": used.get(g["goods_no"], "")} for g in hit[1]]})
+                             "goods": [{**g, "in_pool": used.get(g["goods_no"], "")} for g in hit[1]],
+                             "liandong": {"configured": False,
+                                          "reason": "未提供 API 文档，不会询价，也不会付款"},
+                             "manual": {"configured": True, "pays_automatically": False}})
 
     @guard
     async def exceptions(request: Request):
@@ -177,15 +253,22 @@ def ops_routes(core) -> list[Route]:
         if row is None or row["status"] not in OPEN_STATES:
             return fail(404, "order_not_open")
         action = request.path_params["action"]
+        if row["status"] == "awaiting_approval" and action == "deliver":
+            return fail(409, "awaiting_approval", "请先在待拍板里同意或拒绝，未同意不会交付")
         if action == "deliver":
             payload = str(req.get("payload", "")).strip()
             if not payload:
                 return fail(400, "bad_request", "payload is empty")
             store.finish(row["id"], "delivered", payload=payload)
         elif action == "cancel":
+            if row["status"] == "awaiting_approval":
+                open_row = store.open_purchase_for(row["order_no"])
+                if open_row is not None:
+                    store.decide_proposal(open_row["id"], "rejected")
+                store.update(row["id"], supplier="")
             store.finish(row["id"], "canceled", error=str(req.get("reason", "canceled by admin"))[:200])
         elif action == "retry":
-            # The owner checked 16688 and confirmed nothing was charged: safe to let the pool try again.
+            # The owner checked the upstream and confirmed nothing was charged. Rebuild a proposal; do not pay here.
             if row["status"] != "needs_review":
                 return fail(409, "not_needs_review")
             p = cfg.product_by_id(row["product_id"])
@@ -261,6 +344,24 @@ def ops_routes(core) -> list[Route]:
             return JSONResponse({"ok": True, "id": store.add_proposal(json.dumps(d, ensure_ascii=False))})
         return JSONResponse({"ok": True, "proposals": [proposal_json(r) for r in store.proposals()]})
 
+    def settle_purchase(pid: int, action: str, body: dict):
+        """Record the decision once, then execute. A second submit finds the proposal already decided."""
+        if not store.decide_proposal(pid, "approved" if action == "approve" else "rejected"):
+            return fail(409, "not_open")
+        order = store.get_by_no(str(body.get("order_no", "")))
+        if action == "reject":
+            if order is not None and order["status"] == "awaiting_approval":
+                store.update(order["id"], supplier="")
+                store.finish(order["id"], "canceled", error="采购提案已拒绝，未付款")
+            return JSONResponse({"ok": True, "order": None if order is None else order_json(store.get(order["id"]))})
+        if order is None:
+            return fail(404, "order_not_open")
+        product = cfg.product_by_id(order["product_id"])
+        if product is None:
+            return fail(404, "product_not_found")
+        ful.execute(order, product, body.get("recommended") or {})
+        return JSONResponse({"ok": True, "order": order_json(store.get(order["id"]))})
+
     @guard
     async def proposal_decide(request: Request):
         pid, action = int(request.path_params["pid"]), request.path_params["action"]
@@ -268,24 +369,30 @@ def ops_routes(core) -> list[Route]:
         if row is None or row["status"] != "open" or action not in ("approve", "reject"):
             return fail(409, "not_open")
         d = json.loads(row["body"])
+        if d.get("type") == "purchase":
+            return settle_purchase(pid, action, d)
         if action == "approve":
             try:
                 if d["type"] == "new_product":
                     new_product({"title": d["title"], "mode": d.get("mode", "direct"), "cost": d.get("cost", 0),
                                  "max_unit_cost": d.get("max_unit_cost", 0), "instruction": d.get("instruction", ""),
                                  "sources": d.get("sources", [])})
-                else:
+                elif d["type"] == "remove_source":
                     gone = set(d.get("goods_nos", []))
                     for p in cfg.products:
                         p.sources = [s for s in p.sources if s.goods_no not in gone]
+                else:
+                    return fail(400, "bad_proposal", "unknown proposal type")
             except (ValueError, KeyError, TypeError) as e:
                 return fail(400, "bad_proposal", str(e))
             persist()
-        store.decide_proposal(pid, "approved" if action == "approve" else "rejected")
+        if not store.decide_proposal(pid, "approved" if action == "approve" else "rejected"):
+            return fail(409, "not_open")
         return JSONResponse({"ok": True})
 
     return [
         Route("/ops", page), Route("/ops/", page),
+        Route("/ops/login", login, methods=["POST"]),
         Route("/ops/api/overview", overview),
         Route("/ops/api/pools", pools),
         Route("/ops/api/pools/save", pool_save, methods=["POST"]),

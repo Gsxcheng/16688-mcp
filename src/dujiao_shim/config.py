@@ -7,7 +7,7 @@ from pathlib import Path
 @dataclass
 class Source:
     """One place a product can be bought from. Sources are tried in list order."""
-    type: str                      # "16688" or "manual"
+    type: str                      # "16688", "manual" (TG and other humans), or "liandong" (no API yet)
     goods_no: str = ""             # 16688 goods number (type "16688")
     max_unit_cost: float = 0.0     # refuse to buy when the 16688 total per unit exceeds this (fee included)
     label: str = ""                # human label shown in notifications (type "manual")
@@ -47,6 +47,7 @@ class Config:
     secret: str = ""
     base_url: str = "https://www.16688.com.cn"
     live: bool = False             # False = never call purchase/create; deliver a clearly fake card instead
+    authorize_formal: bool = False  # True = allow purchase/create against the official 16688 host
     max_orders_per_day: int = 20
     min_balance: float = 0.0       # keep at least this much in the 16688 operating wallet
     callback_url: str = ""         # default Dujiao callback endpoint (public URL)
@@ -108,6 +109,7 @@ def from_env(env: dict[str, str]) -> Config:
         secret=env.get("OPEN16688_SECRET", ""),
         base_url=env.get("OPEN16688_BASE_URL", "https://www.16688.com.cn").rstrip("/"),
         live=env.get("SHIM_LIVE_PURCHASE", "") in ("1", "true", "yes"),
+        authorize_formal=env.get("SHIM_AUTHORIZE_FORMAL_PURCHASE", "") in ("1", "true", "yes"),
         max_orders_per_day=int(env.get("SHIM_MAX_ORDERS_PER_DAY", "20")),
         min_balance=float(env.get("SHIM_MIN_BALANCE", "0")),
         callback_url=env.get("SHIM_CALLBACK_URL", ""),

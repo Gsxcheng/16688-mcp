@@ -46,6 +46,8 @@ export interface ProcOrder {
 }
 export interface Overview {
   live: boolean
+  purchase_mode?: 'simulated' | 'mock' | 'formal' | 'formal_blocked'
+  formal_authorized?: boolean
   wallet: number | null
   min_balance: number
   orders_today: number
@@ -76,7 +78,7 @@ export interface Proposal {
   id: number
   status: 'open' | 'approved' | 'rejected'
   created_at: string
-  type: 'new_product' | 'remove_source'
+  type: 'new_product' | 'remove_source' | 'purchase'
   title: string
   mode?: string
   price?: number
@@ -153,6 +155,7 @@ export const VERDICTS: Record<string, string> = {
 export const ORDER_STATUS: Record<string, { label: string; cls: string }> = {
   delivered: { label: '已交付', cls: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
   processing: { label: '处理中', cls: 'border-blue-200 bg-blue-50 text-blue-700' },
+  awaiting_approval: { label: '待拍板', cls: 'border-amber-200 bg-amber-50 text-amber-700' },
   waiting_stock: { label: '等货源', cls: 'border-amber-200 bg-amber-50 text-amber-700' },
   awaiting_manual: { label: '待人工', cls: 'border-amber-200 bg-amber-50 text-amber-700' },
   needs_review: { label: '需核对', cls: 'border-red-200 bg-red-50 text-red-700' },
